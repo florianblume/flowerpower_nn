@@ -11,37 +11,23 @@ app.use_app('PyGlet') # Set backend
 # Color vertex shader
 #-------------------------------------------------------------------------------
 _color_vertex_code = """
-uniform mat4 u_mv;
 uniform mat4 u_mvp;
-uniform vec3 u_light_eye_pos;
 attribute vec3 a_position;
+attribute vec3 max_vertex_coords;
 attribute vec4 a_color;
 varying vec4 v_color;
-varying vec3 v_eye_pos;
-varying vec3 v_L;
-varying float v_eye_depth;
 void main() {
     gl_Position = u_mvp * vec4(a_position, 1.0);
-    v_color = a_color;
-    v_eye_pos = (u_mv * vec4(a_position, 1.0)).xyz; // Vertex position in eye coordinates
-    v_L = normalize(u_light_eye_pos - v_eye_pos); // Vector to the light
+    v_color = vec4(a_position / max_vertex_coords, 1.0);
 }
 """
 
 # Color fragment shader
 #-------------------------------------------------------------------------------
 _color_fragment_code = """
-uniform float u_light_ambient_w;
 varying vec4 v_color;
-varying vec3 v_eye_pos;
-varying vec3 v_L;
 void main() {
-    // Face normal in eye coordinates
-    vec3 face_normal = normalize(cross(dFdx(v_eye_pos), dFdy(v_eye_pos)));
-    float light_diffuse_w = max(dot(normalize(v_L), normalize(face_normal)), 0.0);
-    float light_w = u_light_ambient_w + light_diffuse_w;
-    if(light_w > 1.0) light_w = 1.0;
-    gl_FragColor = light_w * v_color;
+    gl_FragColor = v_color;
 }
 """
 
@@ -143,7 +129,7 @@ def _compute_calib_proj(K, x0, y0, w, h, nc, fc, window_coords='y_down'):
 
 #-------------------------------------------------------------------------------
 class _Canvas(app.Canvas):
-    def __init__(self, vertices, faces, size, K, R, t, clip_near, clip_far,
+    def __init__(self, vertices, max_vertex_coords, faces, size, K, R, t, clip_near, clip_far,
                  bg_color=(0.0, 0.0, 0.0, 0.0), ambient_weight=0.1,
                  render_rgb=True, render_depth=True):
         """
@@ -182,6 +168,8 @@ class _Canvas(app.Canvas):
         self.vertex_buffer = gloo.VertexBuffer(vertices)
         self.index_buffer = gloo.IndexBuffer(faces.flatten().astype(np.uint32))
 
+        self.max_vertex_coords = max_vertex_coords
+
         # We manually draw the hidden canvas
         self.update()
 
@@ -195,11 +183,11 @@ class _Canvas(app.Canvas):
     def draw_color(self):
         program = gloo.Program(_color_vertex_code, _color_fragment_code)
         program.bind(self.vertex_buffer)
-        program['u_light_eye_pos'] = [0, 0, 0]
-        program['u_light_ambient_w'] = self.ambient_weight
-        program['u_mv'] = _compute_model_view(self.mat_model, self.mat_view)
-        # program['u_nm'] = compute_normal_matrix(self.model, self.view)
         program['u_mvp'] = _compute_model_view_proj(self.mat_model, self.mat_view, self.mat_proj)
+        coord1 = float(self.max_vertex_coords[0])
+        coord2 = float(self.max_vertex_coords[1])
+        coord3 = float(self.max_vertex_coords[2])
+        program['max_vertex_coords'] = [coord1, coord2, coord3]
 
         # Texture where we render the scene
         render_tex = gloo.Texture2D(shape=self.shape + (4,))
@@ -285,13 +273,15 @@ def render(model, im_size, K, R, t, clip_near=100, clip_far=2000,
                      #('a_normal', np.float32, 3),
                      ('a_color', np.float32, colors.shape[1])]
     zipped = zip(model['pts'], colors)
+    # Maximum of x, y and z coordinates
+    max_vertex_coords = np.max(model['pts'], axis=0).astype(np.float32)
     vertices = np.array(list(zipped), vertices_type)
 
     # Rendering
     #---------------------------------------------------------------------------
     render_rgb = mode in ['rgb', 'rgb+depth']
     render_depth = mode in ['depth', 'rgb+depth']
-    c = _Canvas(vertices, model['faces'], im_size, K, R, t, clip_near, clip_far,
+    c = _Canvas(vertices, max_vertex_coords, model['faces'], im_size, K, R, t, clip_near, clip_far,
                 bg_color, ambient_weight, render_rgb, render_depth)
     app.run()
 
