@@ -11,7 +11,7 @@ import numpy as np
 import scipy.misc
 import matplotlib.pyplot as plt
 
-def render_images(data_path, obj_ids, im_step, draw_image=False):
+def render_images(data_path, obj_ids, im_step, mode=['obj_coords', 'rgb', 'depth'], draw_image=False):
     device = 'canon' # options: 'primesense', 'kinect', 'canon'
     model_type = 'cad' # options: 'cad', 'reconst'
 
@@ -26,7 +26,7 @@ def render_images(data_path, obj_ids, im_step, draw_image=False):
     depth_path_mask = os.path.join(data_path, 'train_{}', '{:02d}', 'depth', '{:04d}.png')
     rgb_ext = {'primesense': 'png', 'kinect': 'png', 'canon': 'jpg'}
     obj_colors_path = os.path.join(data_path, 'models_' + model_type, 'obj_rgb.txt')
-    vis_rgb_path_mask = os.path.join(output_dir, '{:02d}_{}_{}_{:04d}_rgb.png')
+    vis_rgb_path_mask = os.path.join(output_dir, '{:02d}_{}_{}_{:04d}_{}.png')
     vis_depth_path_mask = os.path.join(output_dir, '{:02d}_{}_{}_{:04d}_depth_diff.png')
 
     misc.ensure_dir(output_dir)
@@ -72,22 +72,24 @@ def render_images(data_path, obj_ids, im_step, draw_image=False):
             surf_color = (1, 0, 0)
             im_size = (rgb.shape[1], rgb.shape[0])
             ren_rgb = renderer.render(model, im_size, K, R, t,
-                                      surf_color=surf_color, mode='rgb')
+                                      surf_color=surf_color, mode=mode)
+            for index in range(len(ren_rgb)):
+                image = ren_rgb[index]
+                current_mode = mode[index]
+                if draw_image and current_mode != "depth":
+                    vis_rgb = 0.5 * rgb.astype(np.float) + 0.5 * image.astype(np.float)
+                    vis_rgb = vis_rgb.astype(np.uint8)
+                else:
+                    vis_rgb = image.astype(np.float).astype(np.uint8)
 
-            if draw_image:
-                vis_rgb = 0.5 * rgb.astype(np.float) + 0.5 * ren_rgb.astype(np.float)
-                vis_rgb = vis_rgb.astype(np.uint8)
-            else:
-                vis_rgb = ren_rgb.astype(np.float).astype(np.uint8)
+                ############# We don't need this
+                # Draw the bounding box of the object
+                # vis_rgb = misc.draw_rect(vis_rgb, im_gt[0]['obj_bb'])
 
-            ############# We don't need this
-            # Draw the bounding box of the object
-            # vis_rgb = misc.draw_rect(vis_rgb, im_gt[0]['obj_bb'])
-
-            # Save the visualization
-            vis_rgb[vis_rgb > 255] = 255
-            vis_rgb_path = vis_rgb_path_mask.format(obj_id, device, model_type, im_id)
-            scipy.misc.imsave(vis_rgb_path, vis_rgb.astype(np.uint8))
+                # Save the visualization
+                vis_rgb[vis_rgb > 255] = 255
+                vis_rgb_path = vis_rgb_path_mask.format(obj_id, device, model_type, im_id, current_mode)
+                scipy.misc.imsave(vis_rgb_path, vis_rgb.astype(np.uint8))
 
 if __name__ == '__main__':
     import argparse
@@ -99,15 +101,20 @@ if __name__ == '__main__':
                         help="The path to the T-Less dataset.")
     parser.add_argument("--obj_ids",
                         required=True,
-                        type=list,
+                        nargs='+',
+                        type=int,
                         help="The IDs of the objects to render. Specify as an interval, e.g. [1,5].")
     parser.add_argument("--im_step",
                         required=True,
                         type=int,
                         help="Every im_step-th image will be rendered only.")
+    parser.add_argument("--mode",
+                        required=True,
+                        nargs='+',
+                        help="Specifies the mode for the renderer. This can be 'rgb', 'depth' or 'obj_coords' or any combination.")
     parser.add_argument("--draw_image",
                         required=False,
                         action='store_true',
                         help="Indicates whether the actual image of the object is to be rendered into the background.")
     args = parser.parse_args()
-    render_images(args.data_path, range(1, 2), args.im_step, args.draw_image is not None)
+    render_images(args.data_path, args.obj_ids, args.im_step, args.mode, args.draw_image)
