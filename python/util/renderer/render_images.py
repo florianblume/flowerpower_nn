@@ -3,20 +3,17 @@
 
 # A script to render 3D object models into the training images. The models are
 # rendered at the 6D poses that are associated with the training images.
-# The visualizations are saved into the folder specified by "output_dir".
+# The visualizations are saved into the folder specified by "output_path".
 
-from pytless import inout, renderer, misc
+import inout, renderer, misc
 import os
 import numpy as np
 import scipy.misc
 import matplotlib.pyplot as plt
 
-def render_images(data_path, obj_ids, im_step, mode=['obj_coords', 'rgb', 'depth'], draw_image=False):
+def render_images(data_path, output_path, obj_ids, im_step, mode=['obj_coords', 'rgb', 'depth'], draw_image=False):
     device = 'canon' # options: 'primesense', 'kinect', 'canon'
     model_type = 'cad' # options: 'cad', 'reconst'
-
-    # Path to the folder in which the images produced by this script will be saved
-    output_dir = os.path.join(data_path, 'output_check_poses_train_imgs')
 
     # Paths to the elements of the T-LESS dataset
     model_path_mask = os.path.join(data_path, 'models_' + model_type, 'obj_{:02d}.ply')
@@ -26,10 +23,10 @@ def render_images(data_path, obj_ids, im_step, mode=['obj_coords', 'rgb', 'depth
     depth_path_mask = os.path.join(data_path, 'train_{}', '{:02d}', 'depth', '{:04d}.png')
     rgb_ext = {'primesense': 'png', 'kinect': 'png', 'canon': 'jpg'}
     obj_colors_path = os.path.join(data_path, 'models_' + model_type, 'obj_rgb.txt')
-    vis_rgb_path_mask = os.path.join(output_dir, '{:02d}_{}_{}_{:04d}_{}.png')
-    vis_depth_path_mask = os.path.join(output_dir, '{:02d}_{}_{}_{:04d}_depth_diff.png')
+    vis_rgb_path_mask = os.path.join(output_path, '{:02d}_{}_{}_{:04d}_{}.png')
+    vis_depth_path_mask = os.path.join(output_path, '{:02d}_{}_{}_{:04d}_depth_diff.png')
 
-    misc.ensure_dir(output_dir)
+    misc.ensure_dir(output_path)
     obj_colors = inout.load_colors(obj_colors_path)
 
     plt.ioff() # Turn interactive plotting off
@@ -99,6 +96,9 @@ if __name__ == '__main__':
     parser.add_argument("--data_path",
                         required=True,
                         help="The path to the T-Less dataset.")
+    parser.add_argument("--output_path",
+                        required=True,
+                        help="The path to the output folder.")
     parser.add_argument("--obj_ids",
                         required=True,
                         nargs='+',
@@ -117,4 +117,4 @@ if __name__ == '__main__':
                         action='store_true',
                         help="Indicates whether the actual image of the object is to be rendered into the background.")
     args = parser.parse_args()
-    render_images(args.data_path, args.obj_ids, args.im_step, args.mode, args.draw_image)
+    render_images(args.data_path, args.output_path, args.obj_ids, args.im_step, args.mode, args.draw_image)
