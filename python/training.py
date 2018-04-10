@@ -1,39 +1,75 @@
-def main(images_path, objects_path, ground_truth_path, color_map_path, regenerate_data):
+def main(images_path): #, objects_path, ground_truth_path, color_map_path, regenerate_data):
     import os
     import shutil
+    import cv2
 
     import util.util as util
-    import util.renderer.renderer_images as renderer
+    import util.image_util as image_util
+    import util.renderer.render_images as render_images
+    import util.renderer.renderer as renderer
+    import util.renderer.inout as inout
 
     assert os.path.exists(images_path), "The specified images path does not exist."
-    assert os.path.exists(objects_path), "The specified objects path does not exist."
-    assert os.path.exists(ground_truth_path), "The specified ground-truth path does not exist."
-    assert os.path.exists(color_map_path), "The specified color map path does not exist."
+    #assert os.path.exists(objects_path), "The specified objects path does not exist."
+    #assert os.path.exists(ground_truth_path), "The specified ground-truth path does not exist."
+    #assert os.path.exists(color_map_path), "The specified color map path does not exist."
 
     data_path = os.path.join(images_path, "generated_data")
+    info_path = os.path.join(images_path, "train_canon", "01", "info.yml")
+    gt_path = os.path.join(images_path, "train_canon", "01", "gt.yml")
 
-    if regenerate_data:
+    """
+    if os.path.exists(data_path):
         shutil.rmtree(data_path)
-        # Create the folder that is going to hold our rendered depth images as well as the cropped RGB images
-        os.makedirs(data_path)
-        renderer.render_images(images_path, data_path, range(1, 2), 100, 'depth', draw_image=False)
+    # Create the folder that is going to hold our rendered depth images as well as the cropped RGB images
+    os.makedirs(data_path)
+    render_images.render_images(images_path, data_path, range(1, 2), 100, 
+                                [renderer.RENDERING_MODE_DEPTH, renderer.RENDERING_MODE_SEGMENTATION], 
+                                draw_image=False)
+    """
 
-    image_filenames = util.get_files_at_path_of_extension(images_path, ['png', 'bmp', 'jpg', 'jpeg'])
+    obj_info = inout.load_info(info_path)
+    obj_gt = inout.load_gt(gt_path)
+    image_filenames = util.get_files_at_path_of_extensions(data_path, ['png'])
+    for filename in [elem for elem in image_filenames if "depth" in elem]:
+        image = cv2.imread(os.path.join(data_path, filename), 0)
+        im_id = filename.split("_")
+        im_id = int(im_id[3])
+        im_info = obj_info[im_id]
+        im_gt = obj_gt[im_id]
+        # Get intrinsic camera parameters and object pose
+        K = im_info['cam_K']
+        R = im_gt[0]['cam_R_m2c']
+        t = im_gt[0]['cam_t_m2c']
+        obj_coordinates = image_util.object_coordinates_from_depth_image(image, K, R, t)
+        print(obj_coordinates)
 
 if __name__ == '__main__':
     import argparse
+
+    """
+
+    TODO: Add creation of tensorflow record and pass this on to the network 
+
+    """
 
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='This script provides functionality to train the PENN network.')
     parser.add_argument("--images_path",
                         required=True,
                         help="The path to the images.")
+    """
     parser.add_argument("--objects_path",
                         required=True,
                         help="The path to the 3D objects.")
     parser.add_argument("--ground_truth_path",
                         required=True,
                         help="The path to the ground-truth annotations file.")
+    """
+    # TODO: Add argument for map from object model filename to index
+    # TODO: Add argument for list of image filenames to process
+    # TODO: Add argument for path to pre-trained weights
+    """
     parser.add_argument("--color_map_path",
                         required=True,
                         help="The path to the file that stores the mapping of object index to color code.")
@@ -45,6 +81,7 @@ if __name__ == '__main__':
                         action='store_true',
                         help="If set, the already produced depth map renderings and cropped images will be removed\
                         and regenerated.")
+    """
     # More arguments related to training, etc. are to follow
-    args = parser.parse_args()
-    main(*args)
+    arguments = parser.parse_args()
+    main(arguments.images_path)

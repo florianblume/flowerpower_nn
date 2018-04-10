@@ -2,13 +2,37 @@
 # Center for Machine Perception, Czech Technical University in Prague
 
 import numpy as np
+import struct
 from vispy import app, gloo
 import OpenGL.GL as gl
+
+RENDERING_MODE_RGB = 'rgb'
+RENDERING_MODE_DEPTH = 'depth'
+RENDERING_MODE_OBJ_COORDS = 'obj_coords'
+RENDERING_MODE_SEGMENTATION = 'segmentation'
+RENDERING_MODES = [RENDERING_MODE_RGB, 
+                   RENDERING_MODE_DEPTH, 
+                   RENDERING_MODE_OBJ_COORDS,  
+                   RENDERING_MODE_SEGMENTATION]
 
 # WARNING: doesn't work with Qt4 (update() does not call on_draw()??)
 app.use_app('PyGlet') # Set backend
 
-# Object coordinates vertex shader
+# Segmentation vertex shader
+# This shader simply renders the segmentation mask for the given object
+#-------------------------------------------------------------------------------
+_segmentation_vertex_code = """
+uniform mat4 u_mvp;
+attribute vec3 a_position;
+attribute vec4 a_color;
+varying vec4 v_color;
+void main() {
+    gl_Position = u_mvp * vec4(a_position, 1.0);
+    v_color = vec4(1.0, 1.0, 1.0, 1.0);
+}
+"""
+
+# Object coordinates representation vertex shader
 # This shader code renders the 3D object coordinates of the surface of the object
 # into the buffer. This shader is only supposed to visualize the object coordinates
 # and should not be used to retrieve the actual coordinates, as the precision of
@@ -26,9 +50,9 @@ void main() {
 }
 """
 
-# Object coordinates fragment shader
+# Fragment shader that simply applies the color output by the vertex shader
 #-------------------------------------------------------------------------------
-_obj_coords_fragment_code = """
+_simple_color_fragment_code = """
 varying vec4 v_color;
 void main() {
     gl_FragColor = v_color;
@@ -171,7 +195,7 @@ def _compute_calib_proj(K, x0, y0, w, h, nc, fc, window_coords='y_down'):
 class _Canvas(app.Canvas):
     def __init__(self, vertices, max_vertex_coords, faces, size, K, R, t, clip_near, clip_far,
                  bg_color=(0.0, 0.0, 0.0, 0.0), ambient_weight=0.1,
-                 render_rgb=True, render_depth=True, render_obj_coords=True):
+                 render_rgb=True, render_depth=True, render_obj_coords=True, render_segmentation=True):
         """
         mode is from ['rgb', 'depth', 'rgb+depth']
         """
@@ -186,10 +210,13 @@ class _Canvas(app.Canvas):
         self.render_rgb = render_rgb
         self.render_depth = render_depth
         self.render_obj_coords = render_obj_coords
+        self.render_segmentation = render_segmentation
 
-        self.obj_coords = np.array([])
         self.rgb = np.array([])
         self.depth = np.array([])
+        self.obj_coords = np.array([])
+        self.obj_coords_rep = np.array([])
+        self.segmentation = np.array([])
 
         # Model matrix
         self.mat_model = np.eye(4, dtype=np.float32) # From object space to world space
@@ -221,35 +248,10 @@ class _Canvas(app.Canvas):
         if self.render_depth:
             self.draw_depth() # Render depth image
         if self.render_obj_coords:
-            self.draw_obj_coords() # Render object coordinates
-        app.quit() # Immediately exit the application after the first drawing
-
-    def draw_obj_coords(self):
-        program = gloo.Program(_obj_coords_vertex_code, _obj_coords_fragment_code)
-        program.bind(self.vertex_buffer)
-        program['u_mvp'] = _compute_model_view_proj(self.mat_model, self.mat_view, self.mat_proj)
-        coord1 = float(self.max_vertex_coords[0])
-        coord2 = float(self.max_vertex_coords[1])
-        coord3 = float(self.max_vertex_coords[2])
-        program['max_vertex_coords'] = [coord1, coord2, coord3]
-
-        # Texture where we render the scene
-        render_tex = gloo.Texture2D(shape=self.shape + (4,))
-
-        # Frame buffer object
-        fbo = gloo.FrameBuffer(render_tex, gloo.RenderBuffer(self.shape))
-        with fbo:
-            gloo.set_state(depth_test=True)
-            gloo.set_state(cull_face=True)
-            gloo.set_cull_face('back')  # Back-facing polygons will be culled
-            gloo.set_clear_color(self.bg_color)
-            gloo.clear(color=True, depth=True)
-            gloo.set_viewport(0, 0, *self.size)
-            program.draw('triangles', self.index_buffer)
-
-            # Retrieve the contents of the FBO texture
-            self.obj_coords = gloo.read_pixels((0, 0, self.size[0], self.size[1]))[:, :, :3]
-            self.obj_coords = np.copy(self.obj_coords)     
+            self.draw_obj_coords()
+        if self.render_segmentation:
+            self.draw_segmentation()
+        app.quit() # Immediately exit the application after the first drawing   
 
     def draw_color(self):
         program = gloo.Program(_color_vertex_code, _color_fragment_code)
@@ -303,6 +305,60 @@ class _Canvas(app.Canvas):
             self.depth = self.read_fbo_color_rgba32f(fbo)
             self.depth = self.depth[:, :, 0] # Depth is saved in the first channel
 
+    def draw_obj_coords(self):
+        """ This function directly draws the (unprecise) representation of the object coordinates.
+        Unprecise, because the color buffer only provides 8 bits but the position is stored in a
+        32 bit float.
+        """
+        program = gloo.Program(_obj_coords_vertex_code, _simple_color_fragment_code)
+        program.bind(self.vertex_buffer)
+        program['u_mvp'] = _compute_model_view_proj(self.mat_model, self.mat_view, self.mat_proj)
+        coord1 = float(self.max_vertex_coords[0])
+        coord2 = float(self.max_vertex_coords[1])
+        coord3 = float(self.max_vertex_coords[2])
+        program['max_vertex_coords'] = [coord1, coord2, coord3]
+
+        # Texture where we render the scene
+        render_tex = gloo.Texture2D(shape=self.shape + (4,))
+
+        # Frame buffer object
+        fbo = gloo.FrameBuffer(render_tex, gloo.RenderBuffer(self.shape))
+        with fbo:
+            gloo.set_state(depth_test=True)
+            gloo.set_state(cull_face=True)
+            gloo.set_cull_face('back')  # Back-facing polygons will be culled
+            gloo.set_clear_color(self.bg_color)
+            gloo.clear(color=True, depth=True)
+            gloo.set_viewport(0, 0, *self.size)
+            program.draw('triangles', self.index_buffer)
+
+            # Retrieve the contents of the FBO texture
+            self.obj_coords = gloo.read_pixels((0, 0, self.size[0], self.size[1]))[:, :, :3]
+            self.obj_coords = np.copy(self.obj_coords)  
+
+    def draw_segmentation(self):
+        program = gloo.Program(_segmentation_vertex_code, _simple_color_fragment_code)
+        program.bind(self.vertex_buffer)
+        program['u_mvp'] = _compute_model_view_proj(self.mat_model, self.mat_view, self.mat_proj)
+
+        # Texture where we render the scene
+        render_tex = gloo.Texture2D(shape=self.shape + (4,))
+
+        # Frame buffer object
+        fbo = gloo.FrameBuffer(render_tex, gloo.RenderBuffer(self.shape))
+        with fbo:
+            gloo.set_state(depth_test=True)
+            gloo.set_state(cull_face=True)
+            gloo.set_cull_face('back')  # Back-facing polygons will be culled
+            gloo.set_clear_color(self.bg_color)
+            gloo.clear(color=True, depth=True)
+            gloo.set_viewport(0, 0, *self.size)
+            program.draw('triangles', self.index_buffer)
+
+            # Retrieve the contents of the FBO texture
+            self.segmentation = gloo.read_pixels((0, 0, self.size[0], self.size[1]))[:, :, :3]
+            self.segmentation = np.copy(self.segmentation)
+
     @staticmethod
     def read_fbo_color_rgba32f(fbo):
         """
@@ -322,7 +378,7 @@ class _Canvas(app.Canvas):
 # Ref: https://github.com/vispy/vispy/blob/master/examples/demo/gloo/offscreen.py
 def render(model, im_size, K, R, t, clip_near=100, clip_far=2000,
            surf_color=None, bg_color=(0.0, 0.0, 0.0, 0.0),
-           ambient_weight=0.1, mode=['rgb', 'depth', 'obj_coords']):
+           ambient_weight=0.1, mode=RENDERING_MODES):
 
     # Process input data
     #---------------------------------------------------------------------------
@@ -350,24 +406,27 @@ def render(model, im_size, K, R, t, clip_near=100, clip_far=2000,
 
     # Rendering
     #---------------------------------------------------------------------------
-    render_obj_coords = 'obj_coords' in mode
-    render_rgb = 'rgb' in mode
-    render_depth = 'depth' in mode
+    render_rgb = RENDERING_MODE_RGB in mode
+    render_depth = RENDERING_MODE_DEPTH in mode
+    render_obj_coords = RENDERING_MODE_OBJ_COORDS in mode
+    render_segmentation = RENDERING_MODE_SEGMENTATION in mode
     c = _Canvas(vertices, max_vertex_coords, model['faces'], im_size, K, R, t, clip_near, clip_far,
-                bg_color, ambient_weight, render_rgb, render_depth, render_obj_coords)
+                bg_color, ambient_weight, render_rgb, render_depth, render_obj_coords, render_segmentation)
     app.run()
 
     #---------------------------------------------------------------------------
-    out = []
-    if 'rgb' in mode:
-        out.append(c.rgb)
-    if 'depth' in mode:
-        out.append(c.depth)
-    if 'obj_coords' in mode:
-        out.append(c.obj_coords)
-    if any(elem for elem in mode if elem not in ['rgb', 'depth', 'obj_coords']):
+    out = {}
+    if render_rgb:
+        out[RENDERING_MODE_RGB] = c.rgb
+    if render_depth:
+        out[RENDERING_MODE_DEPTH] = c.depth
+    if render_obj_coords:
+        out[RENDERING_MODE_OBJ_COORDS] = c.obj_coords
+    if render_segmentation:
+        out[RENDERING_MODE_SEGMENTATION] = c.segmentation
+    if any(elem for elem in mode if elem not in RENDERING_MODES):
         out = None
-        print('Error: Unknown rendering mode.')
+        print('Error: Unknown rendering mode in modes: {}'.format(mode))
         exit(-1)
 
     c.close()

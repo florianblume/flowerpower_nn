@@ -5,13 +5,13 @@
 # rendered at the 6D poses that are associated with the training images.
 # The visualizations are saved into the folder specified by "output_path".
 
-import inout, renderer, misc
+from . import inout, renderer, misc
 import os
 import numpy as np
 import scipy.misc
 import matplotlib.pyplot as plt
 
-def render_images(data_path, output_path, obj_ids, im_step, mode=['obj_coords', 'rgb', 'depth'], draw_image=False):
+def render_images(data_path, output_path, obj_ids, im_step, mode=renderer.RENDERING_MODES, draw_image=False):
     device = 'canon' # options: 'primesense', 'kinect', 'canon'
     model_type = 'cad' # options: 'cad', 'reconst'
 
@@ -68,12 +68,11 @@ def render_images(data_path, output_path, obj_ids, im_step, mode=['obj_coords', 
             # surf_color = obj_colors[obj_id]
             surf_color = (1, 0, 0)
             im_size = (rgb.shape[1], rgb.shape[0])
-            ren_rgb = renderer.render(model, im_size, K, R, t,
+            rendered = renderer.render(model, im_size, K, R, t,
                                       surf_color=surf_color, mode=mode)
-            for index in range(len(ren_rgb)):
-                image = ren_rgb[index]
-                current_mode = mode[index]
-                if draw_image and current_mode != "depth":
+            for rendering_mode in mode:
+                image = rendered[rendering_mode]
+                if draw_image and rendering_mode != renderer.RENDERING_MODE_DEPTH:
                     vis_rgb = 0.5 * rgb.astype(np.float) + 0.5 * image.astype(np.float)
                     vis_rgb = vis_rgb.astype(np.uint8)
                 else:
@@ -85,7 +84,7 @@ def render_images(data_path, output_path, obj_ids, im_step, mode=['obj_coords', 
 
                 # Save the visualization
                 vis_rgb[vis_rgb > 255] = 255
-                vis_rgb_path = vis_rgb_path_mask.format(obj_id, device, model_type, im_id, current_mode)
+                vis_rgb_path = vis_rgb_path_mask.format(obj_id, device, model_type, im_id, rendering_mode)
                 scipy.misc.imsave(vis_rgb_path, vis_rgb.astype(np.uint8))
 
 if __name__ == '__main__':
