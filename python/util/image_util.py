@@ -18,7 +18,7 @@ def object_coordinates_from_depth_image(depth_image, K, R, t):
     coordinates per pixel with respect to the given camera matrix. 
 
     Args:
-        depth_image ((width, height)): the depth image
+        depth_image ((height, width)): the depth image
         K  ((3, 3)): Intrinsic camera matrix
         R  ((3, 3)): Rotation matrix of the camera
         t     ((3)): Translation vector of the camera
@@ -27,40 +27,28 @@ def object_coordinates_from_depth_image(depth_image, K, R, t):
         A two-dimensional array of (X, Y, Z) tuples that represent the object 
         coordinate at the (x, y) location.
     """
-
-    # Camera parameters
+    obj_coordinates = np.zeros((depth_image.shape[0], depth_image.shape[1], 3), np.float)
+    K = np.array(K)
     f_x = K[0, 0]
     f_y = K[1, 1]
     c_x = K[0, 2]
     c_y = K[1, 2]
+    R = np.array(R)
+    R_inv = np.linalg.inv(R)
+    t = np.array(t)
+    P = np.linalg.pinv(np.hstack((R, t)))
 
-    # Construct the matrix that is to be multplied inversely to the points to switch
-    # from camera space to object space
-    M = np.concatenate((R, t), axis=1)
-    bottom_row = np.zeros(4)
-    bottom_row[3] = 1
-    bottom_row = [bottom_row]
-    # Add the bottom axis to convert the matrix to homogeneous coordinates
-    M = np.concatenate((M, bottom_row), axis=0)
-    # The matrix was formerly multiplied onto the object coordiantes, thus we have to
-    # inverse-mutliply it onto the rendered points to get from camera space to object space
-    M = np.linalg.inv(M)
-
-    # We need the indices to calculate the resulting 3D point
-    indices_x = np.arange(depth_image.shape[0])
-    indices_y = np.arange(depth_image.shape[1])
-    # 3-tuple that is going to hold the coordinates
-    cam_coordinates = np.zeros((depth_image.shape[0], depth_image.shape[1], 4), dtype=np.float)
-
-    print(cam_coordinates[:])
-
-    cam_coordinates[:,:,0] = np.multiply(indices_x - c_x, depth_image) / f_x
-    cam_coordinates[:,:,1] = np.multiply(indices_y - c_y, depth_image) / f_y
-    cam_coordinates[:,:,2] = depth_image
-    # To be in homogeneous coordinates
-    cam_coordinates[:,:,3] = 1
-
-    obj_coordinates = [depth_image.shape[0], depth_image.shape[1], 3]
-    obj_coordinates = np.tensordot(M, cam_coordinates, axes=([1],[2]))
+    for v in range(depth_image.shape[0]):
+        for u in range(depth_image.shape[1]):
+            if depth_image[v, u] > 0:
+                z = depth_image[v, u]
+                x = z * (u - c_x) / f_x
+                y = z * (v - c_y) / f_y
+                X = np.array([x, y, z])
+                X = np.dot(R_inv, X)
+                X = X - t.T[0]
+                obj_coordinates[v, u] = X
+            else:
+                obj_coordinates[v, u] = 0
 
     return obj_coordinates

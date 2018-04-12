@@ -2,6 +2,7 @@ def main(images_path): #, objects_path, ground_truth_path, color_map_path, regen
     import os
     import shutil
     import cv2
+    import numpy as np
 
     import util.util as util
     import util.image_util as image_util
@@ -42,7 +43,16 @@ def main(images_path): #, objects_path, ground_truth_path, color_map_path, regen
         R = im_gt[0]['cam_R_m2c']
         t = im_gt[0]['cam_t_m2c']
         obj_coordinates = image_util.object_coordinates_from_depth_image(image, K, R, t)
-        print(obj_coordinates)
+        max_x = np.max(obj_coordinates[:,:,0])
+        max_y = np.max(obj_coordinates[:,:,1])
+        max_z = np.max(obj_coordinates[:,:,2])
+        if max_x > 0:
+            obj_coordinates[:,:,0] = (obj_coordinates[:,:,0] / max_x) * 255
+        if max_y > 0:
+            obj_coordinates[:,:,1] = (obj_coordinates[:,:,1] / max_y) * 255
+        if max_z > 0:
+            obj_coordinates[:,:,2] = (obj_coordinates[:,:,2] / max_z) * 255
+        cv2.imwrite(os.path.join(data_path, filename + "_true_coorindates.png"), obj_coordinates)
 
 if __name__ == '__main__':
     import argparse
