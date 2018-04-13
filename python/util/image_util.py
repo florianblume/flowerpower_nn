@@ -36,7 +36,11 @@ def object_coordinates_from_depth_image(depth_image, K, R, t):
     R = np.array(R)
     R_inv = np.linalg.inv(R)
     t = np.array(t)
-    P = np.linalg.pinv(np.hstack((R, t)))
+    print(t.T[0])
+    R_t = np.hstack((R, t))
+    R_t = np.vstack((R_t, [0, 0, 0, 1]))
+    R_t_inv = np.linalg.pinv(R_t)
+    P_inv = np.linalg.pinv(np.vstack((R_t, [0, 0, 0, 1])))
 
     for v in range(depth_image.shape[0]):
         for u in range(depth_image.shape[1]):
@@ -45,8 +49,6 @@ def object_coordinates_from_depth_image(depth_image, K, R, t):
                 x = z * (u - c_x) / f_x
                 y = z * (v - c_y) / f_y
                 X = np.array([x, y, z])
-                X = np.dot(R_inv, X)
-                X = X - t.T[0]
                 obj_coordinates[v, u] = X
             else:
                 obj_coordinates[v, u] = 0

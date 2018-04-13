@@ -19,40 +19,18 @@ def main(images_path): #, objects_path, ground_truth_path, color_map_path, regen
     info_path = os.path.join(images_path, "train_canon", "01", "info.yml")
     gt_path = os.path.join(images_path, "train_canon", "01", "gt.yml")
 
-    """
     if os.path.exists(data_path):
         shutil.rmtree(data_path)
     # Create the folder that is going to hold our rendered depth images as well as the cropped RGB images
     os.makedirs(data_path)
     render_images.render_images(images_path, data_path, range(1, 2), 100, 
-                                [renderer.RENDERING_MODE_DEPTH, renderer.RENDERING_MODE_SEGMENTATION], 
+                                [renderer.RENDERING_MODE_OBJ_COORDS], 
                                 draw_image=False)
-    """
 
     obj_info = inout.load_info(info_path)
     obj_gt = inout.load_gt(gt_path)
     image_filenames = util.get_files_at_path_of_extensions(data_path, ['png'])
-    for filename in [elem for elem in image_filenames if "depth" in elem]:
-        image = cv2.imread(os.path.join(data_path, filename), 0)
-        im_id = filename.split("_")
-        im_id = int(im_id[3])
-        im_info = obj_info[im_id]
-        im_gt = obj_gt[im_id]
-        # Get intrinsic camera parameters and object pose
-        K = im_info['cam_K']
-        R = im_gt[0]['cam_R_m2c']
-        t = im_gt[0]['cam_t_m2c']
-        obj_coordinates = image_util.object_coordinates_from_depth_image(image, K, R, t)
-        max_x = np.max(obj_coordinates[:,:,0])
-        max_y = np.max(obj_coordinates[:,:,1])
-        max_z = np.max(obj_coordinates[:,:,2])
-        if max_x > 0:
-            obj_coordinates[:,:,0] = (obj_coordinates[:,:,0] / max_x) * 255
-        if max_y > 0:
-            obj_coordinates[:,:,1] = (obj_coordinates[:,:,1] / max_y) * 255
-        if max_z > 0:
-            obj_coordinates[:,:,2] = (obj_coordinates[:,:,2] / max_z) * 255
-        cv2.imwrite(os.path.join(data_path, filename + "_true_coorindates.png"), obj_coordinates)
+
 
 if __name__ == '__main__':
     import argparse

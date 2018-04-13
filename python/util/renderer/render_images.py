@@ -24,6 +24,7 @@ def render_images(data_path, output_path, obj_ids, im_step, mode=renderer.RENDER
     rgb_ext = {'primesense': 'png', 'kinect': 'png', 'canon': 'jpg'}
     obj_colors_path = os.path.join(data_path, 'models_' + model_type, 'obj_rgb.txt')
     vis_rgb_path_mask = os.path.join(output_path, '{:02d}_{}_{}_{:04d}_{}.png')
+    vis_rgb_binary_path_mask = os.path.join(output_path, '{:02d}_{}_{}_{:04d}_{}_binary.txt')
     vis_depth_path_mask = os.path.join(output_path, '{:02d}_{}_{}_{:04d}_depth_diff.png')
 
     misc.ensure_dir(output_path)
@@ -72,6 +73,14 @@ def render_images(data_path, output_path, obj_ids, im_step, mode=renderer.RENDER
                                       surf_color=surf_color, mode=mode)
             for rendering_mode in mode:
                 image = rendered[rendering_mode]
+
+                vis_rgb_path = vis_rgb_binary_path_mask.format(obj_id, device, model_type, im_id, rendering_mode)
+                with open(vis_rgb_path, "w") as f:
+                    for y in range(image.shape[0]):
+                        for x in range(image.shape[1]):
+                            f.write("{}, {}, {}\n".format(image[y][x][0], image[y][x][1], image[y][x][2]))
+                    f.close()
+
                 if draw_image and rendering_mode != renderer.RENDERING_MODE_DEPTH:
                     vis_rgb = 0.5 * rgb.astype(np.float) + 0.5 * image.astype(np.float)
                     vis_rgb = vis_rgb.astype(np.uint8)
@@ -102,7 +111,7 @@ if __name__ == '__main__':
                         required=True,
                         nargs='+',
                         type=int,
-                        help="The IDs of the objects to render. Specify as an interval, e.g. [1,5].")
+                        help="The IDs of the objects to render. Specify all IDs that you need, .e.g 1 2 or 1 3 4.")
     parser.add_argument("--im_step",
                         required=True,
                         type=int,

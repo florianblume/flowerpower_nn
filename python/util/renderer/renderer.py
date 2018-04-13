@@ -32,6 +32,15 @@ void main() {
 }
 """
 
+# Fragment shader that simply applies the color output by the vertex shader
+#-------------------------------------------------------------------------------
+_segmentation_fragment_code = """
+varying vec4 v_color;
+void main() {
+    gl_FragColor = v_color;
+}
+"""
+
 # Object coordinates representation vertex shader
 # This shader code renders the 3D object coordinates of the surface of the object
 # into the buffer. This shader is only supposed to visualize the object coordinates
@@ -41,21 +50,30 @@ void main() {
 _obj_coords_vertex_code = """
 uniform mat4 u_mvp;
 attribute vec3 a_position;
-attribute vec3 max_vertex_coords;
 attribute vec4 a_color;
-varying vec4 v_color;
+varying float x;
+varying float y;
+varying float z;
 void main() {
     gl_Position = u_mvp * vec4(a_position, 1.0);
-    v_color = vec4(a_position / max_vertex_coords, 1.0);
+    // We simply store the location of the vertex
+    // Pixels between vertices will be interpolated automatically
+    x = a_position.x;
+    y = a_position.y;
+    z = a_position.z;
 }
 """
 
 # Fragment shader that simply applies the color output by the vertex shader
 #-------------------------------------------------------------------------------
-_simple_color_fragment_code = """
-varying vec4 v_color;
+_obj_coords_fragment_code = """
+varying float x;
+varying float y;
+varying float z;
 void main() {
-    gl_FragColor = v_color;
+    // We just put the coordinates as colors, OpenGL allows floating point colors
+    // Only the format of the Texture we render to has to be set to float
+    gl_FragColor = vec4(x, y, z, 1.0);
 }
 """
 
@@ -129,7 +147,7 @@ void main() {
 _depth_fragment_code = """
 varying float v_eye_depth;
 void main() {
-    gl_FragColor = vec4(v_eye_depth, 0.0, 0.1, 1.0);
+    gl_FragColor = vec4(v_eye_depth, 0.0, 0.0, 1.0);
 }
 """
 
@@ -193,7 +211,7 @@ def _compute_calib_proj(K, x0, y0, w, h, nc, fc, window_coords='y_down'):
 
 #-------------------------------------------------------------------------------
 class _Canvas(app.Canvas):
-    def __init__(self, vertices, max_vertex_coords, faces, size, K, R, t, clip_near, clip_far,
+    def __init__(self, vertices, faces, size, K, R, t, clip_near, clip_far,
                  bg_color=(0.0, 0.0, 0.0, 0.0), ambient_weight=0.1,
                  render_rgb=True, render_depth=True, render_obj_coords=True, render_segmentation=True):
         """
@@ -236,8 +254,6 @@ class _Canvas(app.Canvas):
         # Create buffers
         self.vertex_buffer = gloo.VertexBuffer(vertices)
         self.index_buffer = gloo.IndexBuffer(faces.flatten().astype(np.uint32))
-
-        self.max_vertex_coords = max_vertex_coords
 
         # We manually draw the hidden canvas
         self.update()
@@ -310,16 +326,13 @@ class _Canvas(app.Canvas):
         Unprecise, because the color buffer only provides 8 bits but the position is stored in a
         32 bit float.
         """
-        program = gloo.Program(_obj_coords_vertex_code, _simple_color_fragment_code)
+        program = gloo.Program(_obj_coords_vertex_code, _obj_coords_fragment_code)
         program.bind(self.vertex_buffer)
         program['u_mvp'] = _compute_model_view_proj(self.mat_model, self.mat_view, self.mat_proj)
-        coord1 = float(self.max_vertex_coords[0])
-        coord2 = float(self.max_vertex_coords[1])
-        coord3 = float(self.max_vertex_coords[2])
-        program['max_vertex_coords'] = [coord1, coord2, coord3]
 
         # Texture where we render the scene
-        render_tex = gloo.Texture2D(shape=self.shape + (4,))
+        render_tex = gloo.Texture2D(shape=self.shape + (4,), format=gl.GL_RGBA,
+                                    internalformat=gl.GL_RGBA32F)
 
         # Frame buffer object
         fbo = gloo.FrameBuffer(render_tex, gloo.RenderBuffer(self.shape))
@@ -333,11 +346,11 @@ class _Canvas(app.Canvas):
             program.draw('triangles', self.index_buffer)
 
             # Retrieve the contents of the FBO texture
-            self.obj_coords = gloo.read_pixels((0, 0, self.size[0], self.size[1]))[:, :, :3]
-            self.obj_coords = np.copy(self.obj_coords)  
+            self.obj_coords = self.read_fbo_color_rgba32f(fbo)[:, :, :3] # Last channel is alpha, we only need the first three
+            self.obj_coords = np.copy(self.obj_coords)
 
     def draw_segmentation(self):
-        program = gloo.Program(_segmentation_vertex_code, _simple_color_fragment_code)
+        program = gloo.Program(_segmentation_vertex_code, _segmentation_fragment_code)
         program.bind(self.vertex_buffer)
         program['u_mvp'] = _compute_model_view_proj(self.mat_model, self.mat_view, self.mat_proj)
 
@@ -400,8 +413,6 @@ def render(model, im_size, K, R, t, clip_near=100, clip_far=2000,
                      #('a_normal', np.float32, 3),
                      ('a_color', np.float32, colors.shape[1])]
     zipped = zip(model['pts'], colors)
-    # Maximum of x, y and z coordinates
-    max_vertex_coords = np.max(model['pts'], axis=0).astype(np.float32)
     vertices = np.array(list(zipped), vertices_type)
 
     # Rendering
@@ -410,7 +421,7 @@ def render(model, im_size, K, R, t, clip_near=100, clip_far=2000,
     render_depth = RENDERING_MODE_DEPTH in mode
     render_obj_coords = RENDERING_MODE_OBJ_COORDS in mode
     render_segmentation = RENDERING_MODE_SEGMENTATION in mode
-    c = _Canvas(vertices, max_vertex_coords, model['faces'], im_size, K, R, t, clip_near, clip_far,
+    c = _Canvas(vertices, model['faces'], im_size, K, R, t, clip_near, clip_far,
                 bg_color, ambient_weight, render_rgb, render_depth, render_obj_coords, render_segmentation)
     app.run()
 
