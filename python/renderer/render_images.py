@@ -8,7 +8,7 @@
 from . import inout, renderer, misc
 import os
 import numpy as np
-import scipy.misc
+import cv2
 import matplotlib.pyplot as plt
 
 def render_images(data_path, output_path, obj_ids, im_step, mode=renderer.RENDERING_MODES, draw_image=False):
@@ -23,7 +23,7 @@ def render_images(data_path, output_path, obj_ids, im_step, mode=renderer.RENDER
     depth_path_mask = os.path.join(data_path, 'train_{}', '{:02d}', 'depth', '{:04d}.png')
     rgb_ext = {'primesense': 'png', 'kinect': 'png', 'canon': 'jpg'}
     obj_colors_path = os.path.join(data_path, 'models_' + model_type, 'obj_rgb.txt')
-    vis_rgb_path_mask = os.path.join(output_path, '{:02d}_{}_{}_{:04d}_{}.png')
+    vis_rgb_path_mask = os.path.join(output_path, '{:02d}_{}_{}_{:04d}_{}.tiff')
     vis_rgb_binary_path_mask = os.path.join(output_path, '{:02d}_{}_{}_{:04d}_{}_binary.txt')
     vis_depth_path_mask = os.path.join(output_path, '{:02d}_{}_{}_{:04d}_depth_diff.png')
 
@@ -62,7 +62,7 @@ def render_images(data_path, output_path, obj_ids, im_step, mode=renderer.RENDER
             #-----------------------------------------------------------------------
             # Load RGB image
             rgb_path = rgb_path_mask.format(device, obj_id, im_id, rgb_ext[device])
-            rgb = scipy.misc.imread(rgb_path)
+            rgb = cv2.imread(rgb_path)
 
             # Render RGB image of the object model at the pose associated with
             # the training image into a
@@ -73,28 +73,19 @@ def render_images(data_path, output_path, obj_ids, im_step, mode=renderer.RENDER
                                       surf_color=surf_color, mode=mode)
             for rendering_mode in mode:
                 image = rendered[rendering_mode]
-
-                vis_rgb_path = vis_rgb_binary_path_mask.format(obj_id, device, model_type, im_id, rendering_mode)
-                with open(vis_rgb_path, "w") as f:
-                    for y in range(image.shape[0]):
-                        for x in range(image.shape[1]):
-                            f.write("{}, {}, {}\n".format(image[y][x][0], image[y][x][1], image[y][x][2]))
-                    f.close()
-
-                if draw_image and rendering_mode != renderer.RENDERING_MODE_DEPTH:
-                    vis_rgb = 0.5 * rgb.astype(np.float) + 0.5 * image.astype(np.float)
-                    vis_rgb = vis_rgb.astype(np.uint8)
-                else:
-                    vis_rgb = image.astype(np.float).astype(np.uint8)
+                vis_rgb = image
 
                 ############# We don't need this
                 # Draw the bounding box of the object
                 # vis_rgb = misc.draw_rect(vis_rgb, im_gt[0]['obj_bb'])
 
                 # Save the visualization
-                vis_rgb[vis_rgb > 255] = 255
+                #vis_rgb[vis_rgb > 255] = 255
                 vis_rgb_path = vis_rgb_path_mask.format(obj_id, device, model_type, im_id, rendering_mode)
-                scipy.misc.imsave(vis_rgb_path, vis_rgb.astype(np.uint8))
+                print(vis_rgb[vis_rgb > 0])
+                fs_write = cv2.FileStorage(os.path.join(output_path, '{}.yml'.format(im_id)), cv2.FILE_STORAGE_WRITE)
+                fs_write.write("floatdata", vis_rgb)
+                fs_write.release()
 
 if __name__ == '__main__':
     import argparse
