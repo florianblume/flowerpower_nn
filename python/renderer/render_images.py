@@ -10,6 +10,7 @@ import os
 import numpy as np
 import cv2
 import matplotlib.pyplot as plt
+import tifffile as tiff
 
 def render_images(data_path, output_path, obj_ids, im_step, mode=renderer.RENDERING_MODES, draw_image=False):
     device = 'canon' # options: 'primesense', 'kinect', 'canon'
@@ -83,9 +84,7 @@ def render_images(data_path, output_path, obj_ids, im_step, mode=renderer.RENDER
                 #vis_rgb[vis_rgb > 255] = 255
                 vis_rgb_path = vis_rgb_path_mask.format(obj_id, device, model_type, im_id, rendering_mode)
                 print(vis_rgb[vis_rgb > 0])
-                fs_write = cv2.FileStorage(os.path.join(output_path, '{}.yml'.format(im_id)), cv2.FILE_STORAGE_WRITE)
-                fs_write.write("floatdata", vis_rgb)
-                fs_write.release()
+                tiff.imsave(vis_rgb_path, vis_rgb.astype(np.float16))
 
 if __name__ == '__main__':
     import argparse

@@ -5,10 +5,10 @@ def main(images_path): #, objects_path, ground_truth_path, color_map_path, regen
     import numpy as np
 
     import util.util as util
-    import util.image_util as image_util
     import renderer.render_images as render_images
     import renderer.renderer as renderer
     import renderer.inout as inout
+    import tifffile as tiff
 
     assert os.path.exists(images_path), "The specified images path does not exist."
     #assert os.path.exists(objects_path), "The specified objects path does not exist."
@@ -29,13 +29,10 @@ def main(images_path): #, objects_path, ground_truth_path, color_map_path, regen
 
     obj_info = inout.load_info(info_path)
     obj_gt = inout.load_gt(gt_path)
-    image_filenames = util.get_files_at_path_of_extensions(data_path, ['yml'])
+    image_filenames = util.get_files_at_path_of_extensions(data_path, ['tiff'])
     for filename in image_filenames:
-        fs_read = cv2.FileStorage(os.path.join(data_path, filename), cv2.FILE_STORAGE_READ)
-        image = fs_read.getNode('floatdata').mat()      
-        fs_read.release()
+        image = tiff.imread(os.path.join(data_path, filename))
         print(filename)
-        print(image.shape)
         print(image[image > 0])
 
 
