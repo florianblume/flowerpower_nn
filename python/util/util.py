@@ -3,6 +3,7 @@
 
 import numpy as np
 import os
+import re
 
 def crop_image_on_segmentation_color(image, segmentation_mask, color):
     """ This function returns the rectangle that results when cropping the mask
@@ -16,18 +17,5 @@ def get_files_at_path_of_extensions(images_path, extensions):
     import os
     return [fn for fn in os.listdir(images_path) if any(fn.endswith(ext) for ext in extensions)]
 
-class GroundTruthIO:
-    import cv2
-
-    data_key = 'data'
-
-    def load_gt(gt_path):        
-        fs_read = cv2.FileStorage(gt_path, cv2.FILE_STORAGE_READ)
-        image = fs_read.getNode(data_key).mat()      
-        fs_read.release()
-        return image
-
-    def store_gt(gt_path, gt):
-        fs_write = cv2.FileStorage(gt_path, cv2.FILE_STORAGE_WRITE)
-        fs_write.write(data_key, vis_rgb)
-        fs_write.release()
+def sort_list_by_num_in_string_entries(list_of_strings):
+    list_of_strings.sort(key=lambda var:[int(x) if x.isdigit() else x for x in re.findall(r'[^0-9]|[0-9]+', var)])

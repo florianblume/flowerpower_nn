@@ -4,10 +4,6 @@ import matplotlib.image
 
 class Dataset:
 
-    # The class that can convert ground truths from their representation on
-    # disk to a numpy array.
-    gt_io = None
-
     # The full paths to the images
     images = []
 
@@ -34,3 +30,9 @@ class Dataset:
 
     def get_obj_coord_gt(obj_coord_gt_id):
         return gt_io.read_gt(obj_coord_gts[obj_coord_gt_id])
+
+    def verify():
+        return len(images) == len(segmentation_images) == len(obj_coord_gts)
+
+    def size():
+        return len(images)

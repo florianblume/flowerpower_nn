@@ -154,8 +154,3 @@ def resnet_graph(input_image, architecture, stage5=False):
     else:
         C5 = None
     return [C1, C2, C3, C4, C5]
-
-class FlowerPower():
-
-    def function():
-        return 0
