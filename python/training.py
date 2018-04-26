@@ -80,16 +80,19 @@ def main(images_path, image_extension, object_model_path, ground_truth_path, cam
         generate_data(images_path, image_extension, object_model_path, ground_truth_path, 
                   cam_info_path, temp_data_path, regenerate_data)
 
+    images = util.get_files_at_path_of_extensions(images_path, [image_extension])
+    util.sort_list_by_num_in_string_entries(images)
     obj_coordinate_renderings = util.get_files_at_path_of_extensions(temp_data_path, ['tiff'])
     util.sort_list_by_num_in_string_entries(obj_coordinate_renderings)
     segmentation_renderings = util.get_files_at_path_of_extensions(temp_data_path, ['png'])
     util.sort_list_by_num_in_string_entries(segmentation_renderings)
 
-    print(obj_coordinate_renderings)
-    print(segmentation_renderings)
+    dataset = model.dataset.Dataset()
 
-    # TODO store in dataset
-
+    for i in range(len(images)):
+        dataset.add_image(images[i])
+        dataset.add_segmentation_image(segmentation_renderings[i])
+        dataset.add_obj_coord_image(obj_coordinate_renderings[i])
 
 if __name__ == '__main__':
     import argparse

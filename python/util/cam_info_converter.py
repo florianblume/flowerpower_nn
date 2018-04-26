@@ -16,7 +16,6 @@ def convert_tless_cam_info(cam_info_path, images_path, image_extension, output_p
 
         image_filenames = util.get_files_at_path_of_extensions(images_path, [image_extension])
         util.sort_list_by_num_in_string_entries(image_filenames)
-        print(image_filenames)
         index = 0
         for filename in image_filenames:
             info = yaml_info[index]

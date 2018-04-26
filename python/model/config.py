@@ -36,3 +36,6 @@ class Config:
 
     # Weight decay regularization
     WEIGHT_DECAY = 0.0001
+
+    # Parameters for TensorBoard
+    HISTOGRAM_FREQ = 0
