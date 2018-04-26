@@ -97,6 +97,10 @@ def main(images_path, image_extension, object_model_path, ground_truth_path, cam
 if __name__ == '__main__':
     import argparse
 
+    #################
+    # TODO: read all from config file
+    #################
+
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='This script provides functionality to train the FlowerPower network.')
     parser.add_argument("--images_path",

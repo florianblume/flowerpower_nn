@@ -123,7 +123,7 @@ def conv_block(input_tensor, kernel_size, filters, stage, block,
     return x
 
 
-def resnet_graph(input_image, architecture, stage5=False):
+def resnet_graph(input_image, segmentation_image, architecture, stage5=False):
     assert architecture in ["resnet50", "resnet101"]
     # Stage 1
     x = KL.ZeroPadding2D((3, 3))(input_image)
@@ -151,26 +151,83 @@ def resnet_graph(input_image, architecture, stage5=False):
         x = conv_block(x, 3, [512, 512, 2048], stage=5, block='a')
         x = identity_block(x, 3, [512, 512, 2048], stage=5, block='b')
         C5 = x = identity_block(x, 3, [512, 512, 2048], stage=5, block='c')
-        return C5
     else:
-        return C4
+        C5 = None
+    return [C1, C2, C3, C4, C5]
 
-def detection_head_graph(feature_map, filters):
+def detection_head_graph(feature_map, filters, segmentation_image):
     x = KL.Conv2D(filters, (1, 1), strides=(1, 1),
-                  name="detection_head_stage_1" + '2a', use_bias=use_bias)(feature_map)
+                  name="detection_head_" + "stage_1", use_bias=use_bias)(feature_map)
     x = KL.Conv2D(filters, (1, 1), strides=(1, 1),
-                  name="detection_head_stage_2" + '2a', use_bias=use_bias)(x)
+                  name="detection_head_" + "stage_2", use_bias=use_bias)(x)
     x = KL.Conv2D(3, (1, 1), strides=(1, 1),
-                  name="detection_head_final_stage" + '2a', use_bias=use_bias)(x)
+                  name="detection_head_" + "final_stage", use_bias=use_bias)(x)
+    return x
 
+def loss_graph(target_obj_coords, pred_obj_coords):
+    diff = K.abs(target_obj_coords - pred_obj_coords)
+    less_than_one = K.cast(K.less(diff, 1.0), "float32")
+    loss = (less_than_one * 0.5 * diff**2) + (1 - less_than_one) * (diff - 0.5)
+    return loss
 
-def loss_graph():
-    pass
+def data_generator(dataset, config, shuffle=True, batch_size=1):
+    """A generator that returns the images to detect, as well as their segmentation
+    masks and, most importantly, their object coordinate ground-truths.
+    """
+    b = 0  # batch item index
+    image_index = -1
+    image_ids = np.copy(dataset.get_image_ids())
+    error_count = 0
 
-def data_generator():
-    pass
+    # Keras requires a generator to run indefinately.
+    while True:
+        try:
+            # Increment index to pick next image. Shuffle if at the start of an epoch.
+            image_index = (image_index + 1) % len(image_ids)
+            if shuffle and image_index == 0:
+                np.random.shuffle(image_ids)
 
-class FlowerPower:
+            # Get GT object coordinates and segmentation for image.
+            image_id = image_ids[image_index]
+            image = dataset.load_image(image_id)
+            segmentation_image = dataset.load_segmentation_image(image_id)
+            obj_coord_image = dataset.load_obj_coord_image(image_id)
+
+            # Init batch arrays
+            if b == 0:
+                batch_images = np.zeros(
+                    (batch_size,) + image.shape, dtype=np.float32)
+                batch_segmentation_images = np.zeros(
+                    (batch_size,) + image.shape, dtype=np.float32)
+                batch_obj_coord_images = np.zeros(
+                    (batch_size,) + image.shape, dtype=np.float32)
+
+            # Add to batch
+            batch_images[b] = image
+            batch_segmentation_images[b] = segmentation_image
+            batch_obj_coord_images[b] = obj_coord_image
+
+            b += 1
+
+            # Batch full?
+            if b >= batch_size:
+                inputs = [batch_images, batch_segmentation_images, batch_obj_coord_images]
+
+                yield inputs
+
+                # start a new batch
+                b = 0
+        except (GeneratorExit, KeyboardInterrupt):
+            raise
+        except:
+            # Log it and skip the image
+            logging.exception("Error processing image {}".format(
+                dataset.image_info[image_id]))
+            error_count += 1
+            if error_count > 5:
+                raise
+
+class FlowerPowerCNN:
 
     def __init__(self, mode, config, model_dir):
         """
@@ -186,17 +243,146 @@ class FlowerPower:
         self.keras_model = self.build(mode=mode, config=config)
 
     def build(self, mode, config):
-        """Build Mask R-CNN architecture.
+        """Build Flower Power architecture.
             mode: Either "training" or "inference". The inputs and
                 outputs of the model differ accordingly.
         """
         assert mode in ['training', 'inference']
 
+        #########################
+        # TODO: Check if image size is sufficient
+        #########################
+
+        # Inputs of unkown dimensions
+        input_image = KL.Input(shape=[None, None, 3], name="input_image", dtype=tf.int32)
+        input_segmentation_image = KL.Input(shape=[None, None, 3], name="input_segmentation_image", dtype=tf.int32)
+
+        # Build the shared convolutional layers.
+        # Bottom-up Layers
+        # Returns a list of the last layers of each stage, 5 in total.
+        # Don't create the thead (stage 5), so we pick the 4th item in the list.
+        _, C2, C3, C4, C5 = resnet_graph(input_image, input_segmentation_image, "resnet101", stage5=True)
+
+        # Top-down Layers
+        P5 = KL.Conv2D(256, (1, 1), name='fpn_c5p5')(C5)
+        P4 = KL.Add(name="fpn_p4add")([
+            KL.UpSampling2D(size=(2, 2), name="fpn_p5upsampled")(P5),
+            KL.Conv2D(256, (1, 1), name='fpn_c4p4')(C4)])
+        P3 = KL.Add(name="fpn_p3add")([
+            KL.UpSampling2D(size=(2, 2), name="fpn_p4upsampled")(P4),
+            KL.Conv2D(256, (1, 1), name='fpn_c3p3')(C3)])
+        P2 = KL.Add(name="fpn_p2add")([
+            KL.UpSampling2D(size=(2, 2), name="fpn_p3upsampled")(P3),
+            KL.Conv2D(256, (1, 1), name='fpn_c2p2')(C2)])
+
+        # Attach 3x3 conv to all P layers to get the final feature maps.
+        P2 = KL.Conv2D(256, (3, 3), padding="SAME", name="fpn_p2")(P2)
+        P3 = KL.Conv2D(256, (3, 3), padding="SAME", name="fpn_p3")(P3)
+        P4 = KL.Conv2D(256, (3, 3), padding="SAME", name="fpn_p4")(P4)
+        P5 = KL.Conv2D(256, (3, 3), padding="SAME", name="fpn_p5")(P5)
+
+        # The feature maps
+        feature_maps = [P2, P3, P4, P5]
+
+        obj_coord_image = detection_head_graph(P5, 1024, input_segmentation_image)
+
+        if mode == "training":
+
+            input_obj_coord_image = KL.Input(shape=[None, None, 3], name="input_obj_coord_image", dtype=tf.float32)
+
+            # Losses
+            loss = KL.Lambda(lambda x: loss_graph(*x), name="loss")(
+                [input_obj_coord_image, pred_obj_coord_image])
+
+            # Model
+            inputs = [input_image, input_segmentation_image, input_obj_coord_image]
+
+            outputs = [pred_obj_coord_image, loss]
+            model = KM.Model(inputs, outputs, name='flowerpower_cnn')
+        else:
+            model = KM.Model([input_image, input_segmentation_image],
+                             [obj_coord_image], name='flowerpower_cnn')
+
+        return model
+
     def load_weights(self, filepath, by_name=False, exclude=None):
-        pass
+        
+        """Modified version of the correspoding Keras function with
+        the addition of multi-GPU support and the ability to exclude
+        some layers from loading.
+        exlude: list of layer names to excluce
+        """
+        import h5py
+        from keras.engine import topology
+
+        if exclude:
+            by_name = True
+
+        if h5py is None:
+            raise ImportError('`load_weights` requires h5py.')
+        f = h5py.File(filepath, mode='r')
+        if 'layer_names' not in f.attrs and 'model_weights' in f:
+            f = f['model_weights']
+
+        # In multi-GPU training, we wrap the model. Get layers
+        # of the inner model because they have the weights.
+        keras_model = self.keras_model
+        layers = keras_model.inner_model.layers if hasattr(keras_model, "inner_model")\
+            else keras_model.layers
+
+        # Exclude some layers
+        if exclude:
+            layers = filter(lambda l: l.name not in exclude, layers)
+
+        if by_name:
+            topology.load_weights_from_hdf5_group_by_name(f, layers)
+        else:
+            topology.load_weights_from_hdf5_group(f, layers)
+        if hasattr(f, 'close'):
+            f.close()
+
+        # Update the log directory
+        self.set_log_dir(filepath)
 
     def compile(self, learning_rate, momentum):
-        pass
+        
+        """Gets the model ready for training. Adds losses, regularization, and
+        metrics. Then calls the Keras compile() function.
+        """
+        # Optimizer object
+        optimizer = keras.optimizers.SGD(lr=learning_rate, momentum=momentum,
+                                         clipnorm=5.0)
+        # Add Losses
+        # First, clear previously set losses to avoid duplication
+        self.keras_model._losses = []
+        self.keras_model._per_input_losses = {}
+        loss_names = ["loss"]
+        for name in loss_names:
+            layer = self.keras_model.get_layer(name)
+            if layer.output in self.keras_model.losses:
+                continue
+            self.keras_model.add_loss(
+                tf.reduce_mean(layer.output, keep_dims=True))
+
+        # Add L2 Regularization
+        # Skip gamma and beta weights of batch normalization layers.
+        reg_losses = [keras.regularizers.l2(self.config.WEIGHT_DECAY)(w) / tf.cast(tf.size(w), tf.float32)
+                      for w in self.keras_model.trainable_weights
+                      if 'gamma' not in w.name and 'beta' not in w.name]
+        self.keras_model.add_loss(tf.add_n(reg_losses))
+
+        # Compile
+        self.keras_model.compile(optimizer=optimizer, loss=[
+                                 None] * len(self.keras_model.outputs))
+
+        # Add metrics for losses
+        for name in loss_names:
+            if name in self.keras_model.metrics_names:
+                continue
+            layer = self.keras_model.get_layer(name)
+            self.keras_model.metrics_names.append(name)
+            self.keras_model.metrics_tensors.append(tf.reduce_mean(layer.output,
+                                                                   keep_dims=True))
 
     def set_log_dir(self, model_path=None):
         """Sets the model log directory and epoch counter.
@@ -240,13 +426,13 @@ class FlowerPower:
         # Pre-defined layer regular expressions
         layer_regex = {
             # all layers but the backbone
-            "heads": r"(mrcnn\_.*)|(rpn\_.*)|(fpn\_.*)",
+            "heads": r"(detection\_head\_.*)",
             # From Resnet stage 4 layers and up
             "3+": r"(res3.*)|(bn3.*)|(res4.*)|(bn4.*)|(res5.*)|(bn5.*)",
             "4+": r"(res4.*)|(bn4.*)|(res5.*)|(bn5.*)",
             "5+": r"(res5.*)|(bn5.*)",
             # All layers
-            "all": ".*",
+            "all": ".*"
         }
         if layers in layer_regex.keys():
             layers = layer_regex[layers]
@@ -292,5 +478,33 @@ class FlowerPower:
         )
         self.epoch = max(self.epoch, epochs)
 
-    def detect(self, images, verbose=0):
-        pass
+    def detect(self, images, segmentation_images, verbose=0):
+        """Runs the detection pipeline.
+
+        images: List of images, potentially of different sizes.
+
+        Returns a list of dicts, one dict per image. The dict contains:
+        obj_coords: [N, (y1, x1, y2, x2)] the predicted object coordinate images
+        """
+        assert self.mode == "inference", "Create model in inference mode."
+        assert len(images) == self.config.BATCH_SIZE, "len(images) must be equal to BATCH_SIZE"
+        assert len(images) == len(segmentation_images)
+
+        if verbose:
+            log("Processing {} images".format(len(images)))
+            for image in images:
+                print(type(image))
+                log("image", image)
+
+        zipped = zip(images, segmentation_images)
+
+        # Run object coordinate prediction
+        obj_coords = self.keras_model.predict([zipped], verbose=0)
+
+        # Process detections
+        results = []
+        for i, image in enumerate(images):
+            results.append({
+                "obj_coords": obj_coords[i],
+            })
+        return results
