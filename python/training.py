@@ -102,27 +102,31 @@ def train(config):
     segmentation_renderings = util.get_files_at_path_of_extensions(temp_data_path, ['png'])
     util.sort_list_by_num_in_string_entries(segmentation_renderings)
 
-    train_dataset = model.dataset.Dataset()
-    val_dataset = model.dataset.Dataset()
+    train_dataset = dataset.Dataset()
+    val_dataset = dataset.Dataset()
 
-    indices = range(len(images))
+    indices = np.arange(len(images))
     shuffle(indices)
 
-    for i in indices[:len(indices) * config.TRAIN_VAL_RATIO]:
-        train_dataset.add_image(images[i])
-        train_dataset.add_segmentation_image(segmentation_renderings[i])
-        train_dataset.add_obj_coord_image(obj_coordinate_renderings[i])
+    train_indices_length = int(len(indices) * config.TRAIN_VAL_RATIO)
 
-    for i in indices[len(indices) * config.TRAIN_VAL_RATIO : len(indices) - 1]:
-        val_dataset.add_image(images[i])
-        val_dataset.add_segmentation_image(segmentation_renderings[i])
-        val_dataset.add_obj_coord_image(obj_coordinate_renderings[i])
+    for i in range(train_indices_length):
+        train_index = indices[i]
+        train_dataset.add_image(os.path.join(images_path, images[train_index]))
+        train_dataset.add_segmentation_image(os.path.join(temp_data_path, segmentation_renderings[train_index]))
+        train_dataset.add_obj_coord_image(os.path.join(temp_data_path, obj_coordinate_renderings[train_index]))
+
+    for i in range(train_indices_length, len(indices)):
+        val_index = indices[i]
+        val_dataset.add_image(os.path.join(images_path, images[val_index]))
+        val_dataset.add_segmentation_image(os.path.join(temp_data_path, segmentation_renderings[val_index]))
+        val_dataset.add_obj_coord_image(os.path.join(temp_data_path, obj_coordinate_renderings[val_index]))
 
     network_model = model.FlowerPowerCNN('training', config, output_path)
     if weights_path != "":
         network_model.load_weights(weights_path, config.LAYERS_TO_EXCLUDE_FROM_WEIGHT_LOADING)
 
-    network_model.train(train_dataset, val_dataset, config.LEARNING_RATE, config.EPOCHS, config.LAYERS_TO_TRAIN)
+    network_model.train(train_dataset, val_dataset, config)
 
 if __name__ == '__main__':
     import argparse

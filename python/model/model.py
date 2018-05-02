@@ -1,6 +1,9 @@
-
+import os
 import numpy as np
+import datetime
+import re
 
+import logging
 import tensorflow as tf
 import keras
 import keras.backend as K
@@ -47,8 +50,21 @@ class BatchNorm(KL.BatchNormalization):
 #  Data preparation
 ############################################################
 
-def crop_image_to_segmentation_graph(image, segmentation_image, color=[255, 255, 255]):
-    mask_indices = segmentation_image == color
+def crop_image_to_segmentation_graph(image, segmentation_image, color):
+    mask = K.equal(segmentation_image, color)
+    mask = tf.reduce_all(mask, axis=3)
+    # mask = [batch, H, W] filled with summed up bool values
+    indices = tf.where(mask)
+    print(indices)
+    # indices = [(batch, y, x)]
+    y_start = tf.reduce_min(indices, axis=1)
+    y_end = tf.reduce_max(indices, axis=1)
+    height = tf.subtract(y_end, y_start)
+    x_start = tf.reduce_min(indices, axis=2)
+    x_end = tf.reduce_max(indices, axis=2)
+    width = tf.subtract(x_end, x_start)
+    cropped_image = tf.crop_to_bounding_box(image, y_start, x_start, height, width)
+    return cropped_image
 
 ############################################################
 #  Resnet Graph
@@ -72,7 +88,7 @@ def identity_block(input_tensor, kernel_size, filters, stage, block,
     bn_name_base = 'bn' + str(stage) + block + '_branch'
 
     x = KL.Conv2D(nb_filter1, (1, 1), name=conv_name_base + '2a',
-                  use_bias=use_bias)(input_tensor, padding="same")
+                  use_bias=use_bias, padding="same")(input_tensor)
     x = BatchNorm(axis=3, name=bn_name_base + '2a')(x)
     x = KL.Activation('relu')(x)
 
@@ -174,20 +190,28 @@ def detection_head_graph(feature_map, filters):
     """
     x = KL.Conv2D(filters, (1, 1), strides=(1, 1),
                   name="detection_head_" + "stage_1", use_bias=True, padding="same")(feature_map)
+    x = KL.Activation('relu', name='detection_head_stage_1_activation')(x)
     x = KL.Conv2D(filters, (1, 1), strides=(1, 1),
                   name="detection_head_" + "stage_2", use_bias=True, padding="same")(x)
+    x = KL.Activation('relu', name='detection_head_stage_2_activation')(x)
     x = KL.Conv2D(3, (1, 1), strides=(1, 1),
                   name="detection_head_" + "final_stage", use_bias=True, padding="same")(x)
     return x
 
-def loss_graph(target_obj_coords, segmentation_image, pred_obj_coords):
+def loss_graph(target_obj_coords, segmentation_image, color, pred_obj_coords):
     """ Loss for the network.
 
     target_obj_coords: [batch, height, width, 3]. The ground-truth object coordinates.
     pred_obj_coords: [batch, height, width, 3]. The predicted object coordinates.
     """
-    diff = K.abs(target_obj_coords - pred_obj_coords)
-    less_than_one = K.cast(K.less(diff, 1.0), "float32")
+
+    # TODO: take care of downsampling of image when using a stride greater 1
+
+    mask = K.equal(segmentation_image, color)
+    mask = K.cast(tf.reduce_all(mask, axis=3), tf.float32)
+
+    diff = K.abs(mask * (relevant_target_obj_coords - relevant_pred_obj_coords))
+    less_than_one = K.cast(K.less(diff, 1.0), tf.float32)
     loss = (less_than_one * 0.5 * diff**2) + (1 - less_than_one) * (diff - 0.5)
     return loss
 
@@ -232,9 +256,7 @@ def data_generator(dataset, config, shuffle=True, batch_size=1):
 
             # Batch full?
             if b >= batch_size:
-                inputs = [batch_images, batch_segmentation_images, batch_obj_coord_images]
-
-                yield inputs
+                yield [batch_images, batch_segmentation_images, batch_obj_coord_images], []
 
                 # start a new batch
                 b = 0
@@ -243,7 +265,7 @@ def data_generator(dataset, config, shuffle=True, batch_size=1):
         except:
             # Log it and skip the image
             logging.exception("Error processing image {}".format(
-                dataset.image_info[image_id]))
+                dataset.get_image(image_id)))
             error_count += 1
             if error_count > 5:
                 raise
@@ -275,17 +297,21 @@ class FlowerPowerCNN:
         #########################
 
         # Inputs of unkown dimensions
-        input_image = KL.Input(shape=[None, None, 3], name="input_image", dtype=tf.int32)
-        input_segmentation_image = KL.Input(shape=[None, None, 3], name="input_segmentation_image", dtype=tf.int32)
+        input_image = KL.Input(shape=[None, None, 3], name="input_image", dtype=tf.float32)
+        input_segmentation_image = KL.Input(shape=[None, None, 3], name="input_segmentation_image", dtype=tf.float32)
+        # Temporary constant to account for all white semgentation images, actual color will be
+        # integrated later
+        color = tf.constant([255, 255, 255], dtype=tf.float32)
 
         # Preparation of input data, i.e. cropping the image to the segmentation mask of the object model
-        cropped_images = crop_image_to_segmentation_graph(input_image, input_segmentation_image)
+        # The contstant is the temporary hard-coded color of the object in the segmentation image
+        cropped_image = crop_image_to_segmentation_graph(input_image, input_segmentation_image, color)
+        cropped_segmentation_image = crop_image_to_segmentation_graph(input_segmentation_image, input_segmentation_image, color)
 
         # Build the shared convolutional layers.
         # Bottom-up Layers
         # Returns a list of the last layers of each stage, 5 in total.
-        # Don't create the thead (stage 5), so we pick the 4th item in the list.
-        C1, C2, C3, C4, C5 = resnet_graph(cropped_images, "resnet101", stage5=True)
+        C1, C2, C3, C4, C5 = resnet_graph(cropped_image, "resnet101", 1, stage5=True)
 
         """
         Unclear what this is for
@@ -316,16 +342,20 @@ class FlowerPowerCNN:
 
         if mode == "training":
 
+            # Groundtruth object coordinates
             input_obj_coord_image = KL.Input(shape=[None, None, 3], name="input_obj_coord_image", dtype=tf.float32)
+            cropped_obj_coord_image = crop_image_to_segmentation_graph(input_obj_coord_image, input_segmentation_image, color)
 
             # Losses
+            # obj_coord_image is cropped already, because we put only the already cropped images into the network in
+            # resnet_graph(cropped_image, "resnet101", 1, stage5=True)
             loss = KL.Lambda(lambda x: loss_graph(*x), name="loss")(
-                [input_obj_coord_image, pred_obj_coord_image])
+                [cropped_obj_coord_image, cropped_segmentation_image, color, obj_coord_image])
 
             # Model
             inputs = [input_image, input_segmentation_image, input_obj_coord_image]
 
-            outputs = [pred_obj_coord_image, loss]
+            outputs = [obj_coord_image, loss]
             model = KM.Model(inputs, outputs, name='flowerpower_cnn')
         else:
             model = KM.Model([input_image, input_segmentation_image],
@@ -429,9 +459,8 @@ class FlowerPowerCNN:
             # Continue from we left of. Get epoch and date from the file name
             # A sample model path might look like:
             # /path/to/logs/coco20171029T2315/mask_rcnn_coco_0001.h5
-            regex = r".*/\w+(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})/" + 
-                    self.config.NAME.lower().encode('unicode_escape') + 
-                    r"\w+(\d{4})\.h5"
+            # TODO: proper naming of weights
+            regex = r".*/\w+(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})/\w+(\d{4})\.h5"
             m = re.match(regex, model_path)
             if m:
                 now = datetime.datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)),
@@ -448,8 +477,11 @@ class FlowerPowerCNN:
         self.checkpoint_path = self.checkpoint_path.replace(
             "*epoch*", "{epoch:04d}")
 
-    def train(self, train_dataset, val_dataset, learning_rate, epochs, layers):
+    def train(self, train_dataset, val_dataset, config):
         
+        learning_rate = config.LEARNING_RATE
+        epochs = config.EPOCHS
+        layers = config.LAYERS_TO_TRAIN
 
         # Pre-defined layer regular expressions
         layer_regex = {
@@ -506,6 +538,44 @@ class FlowerPowerCNN:
         )
         self.epoch = max(self.epoch, epochs)
 
+
+    def set_trainable(self, layer_regex, keras_model=None, indent=0, verbose=1):
+        """Sets model layers as trainable if their names match
+        the given regular expression.
+        """
+        # Print message on the first call (but not on recursive calls)
+        if verbose > 0 and keras_model is None:
+            log("Selecting layers to train")
+
+        keras_model = keras_model or self.keras_model
+
+        # In multi-GPU training, we wrap the model. Get layers
+        # of the inner model because they have the weights.
+        layers = keras_model.inner_model.layers if hasattr(keras_model, "inner_model")\
+            else keras_model.layers
+
+        for layer in layers:
+            # Is the layer a model?
+            if layer.__class__.__name__ == 'Model':
+                print("In model: ", layer.name)
+                self.set_trainable(
+                    layer_regex, keras_model=layer, indent=indent + 4)
+                continue
+
+            if not layer.weights:
+                continue
+            # Is it trainable?
+            trainable = bool(re.fullmatch(layer_regex, layer.name))
+            # Update layer. If layer is a container, update inner layer.
+            if layer.__class__.__name__ == 'TimeDistributed':
+                layer.layer.trainable = trainable
+            else:
+                layer.trainable = trainable
+            # Print trainble layer names
+            if trainable and verbose > 0:
+                log("{}{:20}   ({})".format(" " * indent, layer.name,
+                                            layer.__class__.__name__))
+
     def detect(self, images, segmentation_images, verbose=0):
         """Runs the detection pipeline.
 
@@ -541,3 +611,4 @@ class FlowerPowerCNN:
         #Depending on the size of the predicted object coordinates we need to either
         #  1. Set the predicted coordinates as ever i-th pixel (if the image was downsampled during detection)
         #  2. Mask the predicted object coordinates with the segmentation image
+        pass

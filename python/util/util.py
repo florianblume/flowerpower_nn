@@ -4,14 +4,21 @@
 import numpy as np
 import os
 import re
+import numpy
 
 def crop_image_on_segmentation_color(image, segmentation_mask, color):
     """ This function returns the rectangle that results when cropping the mask
     """
-    mask = np.zeros([segmentation_mask.shape[0], segmentation_mask.shape[1]], dtype=np.uint8)
-    indices = segmentation_mask == color
-    mask[indices] = 255
-    return image[np.ix_(mask.any(255), mask.any(0))]
+    indices = numpy.where(segmentation_mask == color)
+    y_indices = indices[0]
+    y_start = np.min(y_indices)
+    y_end = np.max(y_indices)
+    x_indices = indices[1]
+    x_start = np.min(x_indices)
+    x_end = np.max(x_indices)
+    cropped_image = np.zeros((y_end - y_start, x_end - x_start))
+    cropped_image = image[y_start : y_end + 1, x_start : x_end + 1]
+    return cropped_image
 
 def get_files_at_path_of_extensions(images_path, extensions):
     import os

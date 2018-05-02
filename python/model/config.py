@@ -6,7 +6,8 @@ def parse_config_from_json_file(json_file):
         config = Config()
         config_data = json.load(opened_json_file)
         for entry in config_data:
-            config.setattr(config, entry, config_data[entry])
+            setattr(config, entry, config_data[entry])
+        return config
 
 class Config:
 
@@ -23,3 +24,6 @@ class Config:
 
     # Strides for the ResNet graph, where applicable
     STRIDES = 2
+
+    # The color of the object model in the segmentation mask
+    OBJECT_MODEL_COLOR = [255, 255, 255]
