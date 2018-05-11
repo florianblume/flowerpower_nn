@@ -44,7 +44,9 @@ class TrainingConfig(config.Config):
 
     # The object model to train for, i.e. which is used to render groundtruth
     # object coordinates, if specified to re-render them
-    OBJECT_MODEL_PATH = ""    
+    OBJECT_MODEL_PATH = ""   
+
+    OBJECT_MODEL_COLOR = [255, 255, 255] 
 
     # The path to the weights to use for inference
     WEIGHTS_PATH = ""

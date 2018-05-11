@@ -1,45 +1,40 @@
 # This class provides a container for all data necessary to train the neural network.
 
-import matplotlib.image
+import cv2
 import tifffile as tiff
+import numpy as np
 
 class Dataset:
 
-    # The full paths to the images
-    images = []
+    # TODO: convert to use training examples
+    def __init__(self):
+        self.training_examples = []
 
-    # The full paths to the segmentation images
-    segmentation_images = []
-
-    # The object coordinates ground truth values
-    obj_coord_images = []
-
-    def add_image(self, image_path):
-        self.images.append(image_path)
+    def add_training_example(self, image_path, segmentation_image_path, obj_coord_image_path):
+        self.training_examples.append({"image" : image_path,
+                                  "segmentation" : segmentation_image_path,
+                                  "obj_coord" : obj_coord_image_path})
 
     def get_image(self, image_id):
-        return self.images[image_id]
+        return self.training_examples[image_id]["image"]
 
     def load_image(self, im_id):
-        return matplotlib.image.imread(self.images[im_id])
+        return cv2.imread(self.get_image(im_id))
 
     def get_image_ids(self):
-        return [i for i in range(len(self.images))]
+        return [i for i in range(len(self.training_examples))]
 
-    def add_segmentation_image(self, segmentation_image_path):
-        self.segmentation_images.append(segmentation_image_path)
+    def get_segmentation_image(self, seg_im_id):
+        return self.training_examples[seg_im_id]["segmentation"]
 
     def load_segmentation_image(self, seg_im_id):
-        return matplotlib.image.imread(self.segmentation_images[seg_im_id])
+        return cv2.imread(self.get_segmentation_image(seg_im_id))
 
-    def add_obj_coord_image(self, obj_coord_image):
-        self.obj_coord_images.append(obj_coord_image)
+    def get_obj_coord_image(self, obj_coord_image):
+        return self.training_examples[obj_coord_image]["obj_coord"]
 
     def load_obj_coord_image(self, obj_coord_image_id):
-        return tiff.imread(self.obj_coord_images[obj_coord_image_id])
-
-    def verify(self):
-        return len(self.images) == len(self.segmentation_images) == len(self.obj_coord_images)
+        return tiff.imread(self.get_obj_coord_image(obj_coord_image_id)).astype(np.float32)
 
     def size(self):
-        return len(self.images)
+        return len(self.training_examples)

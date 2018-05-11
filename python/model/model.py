@@ -2,6 +2,7 @@ import os
 import numpy as np
 import datetime
 import re
+import cv2
 
 import logging
 import tensorflow as tf
@@ -47,26 +48,6 @@ class BatchNorm(KL.BatchNormalization):
         return super(self.__class__, self).call(inputs, training=False)
 
 ############################################################
-#  Data preparation
-############################################################
-
-def crop_image_to_segmentation_graph(image, segmentation_image, color):
-    mask = K.equal(segmentation_image, color)
-    mask = tf.reduce_all(mask, axis=3)
-    # mask = [batch, H, W] filled with summed up bool values
-    indices = tf.where(mask)
-    print(indices)
-    # indices = [(batch, y, x)]
-    y_start = tf.reduce_min(indices, axis=1)
-    y_end = tf.reduce_max(indices, axis=1)
-    height = tf.subtract(y_end, y_start)
-    x_start = tf.reduce_min(indices, axis=2)
-    x_end = tf.reduce_max(indices, axis=2)
-    width = tf.subtract(x_end, x_start)
-    cropped_image = tf.crop_to_bounding_box(image, y_start, x_start, height, width)
-    return cropped_image
-
-############################################################
 #  Resnet Graph
 ############################################################
 
@@ -88,7 +69,7 @@ def identity_block(input_tensor, kernel_size, filters, stage, block,
     bn_name_base = 'bn' + str(stage) + block + '_branch'
 
     x = KL.Conv2D(nb_filter1, (1, 1), name=conv_name_base + '2a',
-                  use_bias=use_bias, padding="same")(input_tensor)
+                  use_bias=use_bias)(input_tensor)
     x = BatchNorm(axis=3, name=bn_name_base + '2a')(x)
     x = KL.Activation('relu')(x)
 
@@ -98,7 +79,7 @@ def identity_block(input_tensor, kernel_size, filters, stage, block,
     x = KL.Activation('relu')(x)
 
     x = KL.Conv2D(nb_filter3, (1, 1), name=conv_name_base + '2c',
-                  use_bias=use_bias, padding="same")(x)
+                  use_bias=use_bias)(x)
     x = BatchNorm(axis=3, name=bn_name_base + '2c')(x)
 
     x = KL.Add()([x, input_tensor])
@@ -123,7 +104,7 @@ def conv_block(input_tensor, kernel_size, filters, stage, block,
     bn_name_base = 'bn' + str(stage) + block + '_branch'
 
     x = KL.Conv2D(nb_filter1, (1, 1), strides=strides,
-                  name=conv_name_base + '2a', use_bias=use_bias, padding="same")(input_tensor)
+                  name=conv_name_base + '2a', use_bias=use_bias)(input_tensor)
     x = BatchNorm(axis=3, name=bn_name_base + '2a')(x)
     x = KL.Activation('relu')(x)
 
@@ -133,11 +114,11 @@ def conv_block(input_tensor, kernel_size, filters, stage, block,
     x = KL.Activation('relu')(x)
 
     x = KL.Conv2D(nb_filter3, (1, 1), name=conv_name_base +
-                  '2c', use_bias=use_bias, padding="same")(x)
+                  '2c', use_bias=use_bias)(x)
     x = BatchNorm(axis=3, name=bn_name_base + '2c')(x)
 
     shortcut = KL.Conv2D(nb_filter3, (1, 1), strides=strides,
-                         name=conv_name_base + '1', use_bias=use_bias, padding="same")(input_tensor)
+                         name=conv_name_base + '1', use_bias=use_bias)(input_tensor)
     shortcut = BatchNorm(axis=3, name=bn_name_base + '1')(shortcut)
 
     x = KL.Add()([x, shortcut])
@@ -145,32 +126,33 @@ def conv_block(input_tensor, kernel_size, filters, stage, block,
     return x
 
 
-def resnet_graph(image, architecture, stride, stage5=False):
-    assert architecture in ["resnet50", "resnet101"]
+def resnet_graph(input_image, architecture, stage5=False):
+    assert architecture in ["resnet35", "resnet50", "resnet101"]
     # Stage 1
-    x = KL.ZeroPadding2D((3, 3))(image)
-    x = KL.Conv2D(64, (7, 7), strides=(stride, stride), name='conv1', use_bias=True, padding="same")(x)
+    x = KL.ZeroPadding2D((3, 3))(input_image)
+    x = KL.Conv2D(64, (7, 7), strides=(2, 2), name='conv1', use_bias=True)(x)
     x = BatchNorm(axis=3, name='bn_conv1')(x)
     x = KL.Activation('relu')(x)
-    C1 = x = KL.MaxPooling2D((3, 3), strides=(stride, stride), padding="same")(x)
+    C1 = x = KL.MaxPooling2D((3, 3), strides=(2, 2), padding="same")(x)
     # Stage 2
-    x = conv_block(x, 3, [64, 64, 256], stage=2, block='a', strides=(stride, stride))
+    x = conv_block(x, 3, [64, 64, 256], stage=2, block='a', strides=(1, 1))
     x = identity_block(x, 3, [64, 64, 256], stage=2, block='b')
+    ##############
     C2 = x = identity_block(x, 3, [64, 64, 256], stage=2, block='c')
     # Stage 3
-    x = conv_block(x, 3, [128, 128, 512], stage=3, block='a', strides=(stride, stride))
+    x = conv_block(x, 3, [128, 128, 512], stage=3, block='a')
     x = identity_block(x, 3, [128, 128, 512], stage=3, block='b')
     x = identity_block(x, 3, [128, 128, 512], stage=3, block='c')
     C3 = x = identity_block(x, 3, [128, 128, 512], stage=3, block='d')
     # Stage 4
-    x = conv_block(x, 3, [256, 256, 1024], stage=4, block='a', strides=(stride, stride))
-    block_count = {"resnet50": 5, "resnet101": 22}[architecture]
+    x = conv_block(x, 3, [256, 256, 1024], stage=4, block='a')
+    block_count = {"resnet35" : 0, "resnet50": 5, "resnet101": 22}[architecture]
     for i in range(block_count):
         x = identity_block(x, 3, [256, 256, 1024], stage=4, block=chr(98 + i))
     C4 = x
     # Stage 5
     if stage5:
-        x = conv_block(x, 3, [512, 512, 2048], stage=5, block='a', strides=(stride, stride))
+        x = conv_block(x, 3, [512, 512, 2048], stage=5, block='a')
         x = identity_block(x, 3, [512, 512, 2048], stage=5, block='b')
         C5 = x = identity_block(x, 3, [512, 512, 2048], stage=5, block='c')
     else:
@@ -198,21 +180,44 @@ def detection_head_graph(feature_map, filters):
                   name="detection_head_" + "final_stage", use_bias=True, padding="same")(x)
     return x
 
-def loss_graph(target_obj_coords, segmentation_image, color, pred_obj_coords):
+def loss_graph(target_obj_coords, segmentation_image, pred_obj_coords, color):
     """ Loss for the network.
 
     target_obj_coords: [batch, height, width, 3]. The ground-truth object coordinates.
     pred_obj_coords: [batch, height, width, 3]. The predicted object coordinates.
     """
 
-    # TODO: take care of downsampling of image when using a stride greater 1
+    # The mask that takes care of downsampling, i.e. that only every i-th pixel is computed
+    # in case that the output image is smaller than the input image
+    original_image_shape = tf.shape(target_obj_coords)
+    conv_image_shape = tf.shape(pred_obj_coords)
+    step_y = tf.cast((original_image_shape[1] / conv_image_shape[1]) / 2, tf.int32)
+    step_x = tf.cast((original_image_shape[2] / conv_image_shape[2]) / 2, tf.int32)
 
-    mask = K.equal(segmentation_image, color)
-    mask = K.cast(tf.reduce_all(mask, axis=3), tf.float32)
+    # For each batch we gather the same amount of entries
+    target_obj_coords = target_obj_coords[:,::step_y,::step_x,:]
+    # Reshape to [batch,height of predicted obj coords,width of predicted obj coords,colors]
+    target_obj_coords = tf.resize_nearest_neighbor(target_obj_coords, [conv_image_shape[1], conv_image_shape[2]])
+    tf.Print(target_obj_coords, [target_obj_coords], "Object coordinates")
 
-    diff = K.abs(mask * (relevant_target_obj_coords - relevant_pred_obj_coords))
-    less_than_one = K.cast(K.less(diff, 1.0), tf.float32)
-    loss = (less_than_one * 0.5 * diff**2) + (1 - less_than_one) * (diff - 0.5)
+    # The segmentation mask where the object is actually visible
+    segmentation_mask = tf.equal(segmentation_image, color)
+    segmentation_mask = tf.cast(tf.reduce_all(segmentation_mask, axis=3), tf.float32)
+    segmentation_mask = segmentation_mask[:,::step_y,::step_x,:]
+    segmentation_mask = tf.resize_nearest_neighbor(segmentation_mask, [conv_image_shape[1], conv_image_shape[2]])
+    segmentation_mask_indices = segmentation_mask > 0
+    tf.Print(segmentation_mask_indices, [segmentation_mask_indices], "Segmentation mask")
+
+    # Three channels in the color images
+
+    squared_diff = tf.abs(target_obj_coords - pred_obj_coords)
+    less_than_one = tf.cast(tf.less(squared_diff, 1.0), tf.float32)
+    loss = (less_than_one * 0.5 * squared_diff**2) + (1 - less_than_one) * (squared_diff - 0.5)
+    loss = tf.reduce_sum(loss, axis=3)
+    loss = loss * segmentation_mask
+    loss = loss * index_mask
+    loss = tf.reduce_sum(loss, axis=2)
+    loss = tf.reduce_sum(loss, axis=1)
     return loss
 
 def data_generator(dataset, config, shuffle=True, batch_size=1):
@@ -241,13 +246,17 @@ def data_generator(dataset, config, shuffle=True, batch_size=1):
             # Init batch arrays
             if b == 0:
                 batch_images = np.zeros(
-                    (batch_size,) + image.shape, dtype=np.float32)
+                    (batch_size, config.IMAGE_SHAPE[0], config.IMAGE_SHAPE[1], 3), dtype=image.dtype)
                 batch_segmentation_images = np.zeros(
-                    (batch_size,) + image.shape, dtype=np.float32)
+                    (batch_size, config.IMAGE_SHAPE[0], config.IMAGE_SHAPE[1], 3), dtype=segmentation_image.dtype)
                 batch_obj_coord_images = np.zeros(
-                    (batch_size,) + image.shape, dtype=np.float32)
+                    (batch_size, config.IMAGE_SHAPE[0], config.IMAGE_SHAPE[1], 3), dtype=obj_coord_image.dtype)
 
-            # Add to batch
+            new_size = (config.IMAGE_SHAPE[0], config.IMAGE_SHAPE[1])
+            image = cv2.resize(image, new_size, interpolation=cv2.INTER_AREA)
+            segmentation_image = cv2.resize(segmentation_image, new_size, interpolation=cv2.INTER_AREA)
+            obj_coord_image = cv2.resize(obj_coord_image, new_size, interpolation=cv2.INTER_AREA)
+
             batch_images[b] = image
             batch_segmentation_images[b] = segmentation_image
             batch_obj_coord_images[b] = obj_coord_image
@@ -264,8 +273,7 @@ def data_generator(dataset, config, shuffle=True, batch_size=1):
             raise
         except:
             # Log it and skip the image
-            logging.exception("Error processing image {}".format(
-                dataset.get_image(image_id)))
+            logging.exception("Error processing image {}".format(image_id))
             error_count += 1
             if error_count > 5:
                 raise
@@ -292,65 +300,44 @@ class FlowerPowerCNN:
         """
         assert mode in ['training', 'inference']
 
-        #########################
-        # TODO: Check if image size is sufficient
-        #########################
-
         # Inputs of unkown dimensions
-        input_image = KL.Input(shape=[None, None, 3], name="input_image", dtype=tf.float32)
-        input_segmentation_image = KL.Input(shape=[None, None, 3], name="input_segmentation_image", dtype=tf.float32)
-        # Temporary constant to account for all white semgentation images, actual color will be
-        # integrated later
-        color = tf.constant([255, 255, 255], dtype=tf.float32)
+        input_image = KL.Input(shape=config.IMAGE_SHAPE.tolist(), name="input_image", dtype=tf.float32)
+        input_segmentation_image = KL.Input(shape=config.IMAGE_SHAPE.tolist(), name="input_segmentation_image", dtype=tf.float32)
 
-        # Preparation of input data, i.e. cropping the image to the segmentation mask of the object model
-        # The contstant is the temporary hard-coded color of the object in the segmentation image
-        cropped_image = crop_image_to_segmentation_graph(input_image, input_segmentation_image, color)
-        cropped_segmentation_image = crop_image_to_segmentation_graph(input_segmentation_image, input_segmentation_image, color)
+        # The color of the object model in the segmentation image
+        color = K.constant(config.OBJECT_MODEL_COLOR, dtype=tf.float32)
 
         # Build the shared convolutional layers.
         # Bottom-up Layers
         # Returns a list of the last layers of each stage, 5 in total.
-        C1, C2, C3, C4, C5 = resnet_graph(cropped_image, "resnet101", 1, stage5=True)
+        C1, C2, C3, C4, C5 = resnet_graph(input_image, "resnet35", stage5=False)
 
+        # We only use C3, as the deeper layers result in a receptive field that is too large
         """
-        Unclear what this is for
-
-        # Top-down Layers
-        P5 = KL.Conv2D(256, (1, 1), name='fpn_c5p5')(C5)
-        P4 = KL.Add(name="fpn_p4add")([
-            KL.UpSampling2D(size=(2, 2), name="fpn_p5upsampled")(P5),
-            KL.Conv2D(256, (1, 1), name='fpn_c4p4')(C4)])
-        P3 = KL.Add(name="fpn_p3add")([
-            KL.UpSampling2D(size=(2, 2), name="fpn_p4upsampled")(P4),
-            KL.Conv2D(256, (1, 1), name='fpn_c3p3')(C3)])
-        P2 = KL.Add(name="fpn_p2add")([
+        P3 = KL.Conv2D(256, (1, 1), name='fpn_c3p3')(C3)
+        P2 = KL.Add(name="fpn_p3add")([
             KL.UpSampling2D(size=(2, 2), name="fpn_p3upsampled")(P3),
-            KL.Conv2D(256, (1, 1), name='fpn_c2p2')(C2)])
-
-        # Attach 3x3 conv to all P layers to get the final feature maps.
-        P2 = KL.Conv2D(256, (3, 3), padding="SAME", name="fpn_p2")(P2)
-        P3 = KL.Conv2D(256, (3, 3), padding="SAME", name="fpn_p3")(P3)
-        P4 = KL.Conv2D(256, (3, 3), padding="SAME", name="fpn_p4")(P4)
-        P5 = KL.Conv2D(256, (3, 3), padding="SAME", name="fpn_p5")(P5)
+            KL.Conv2D(256, (1, 1), name='resnet_c2p2')(C2)])
+        P1 = KL.Add(name="fpn_p2add")([
+            KL.UpSampling2D(size=(2, 2), name="fpn_p2upsampled")(P2),
+            KL.Conv2D(256, (1, 1), name='fpn_c1p1')(C1)])
         """
 
-        # The feature maps
-        #feature_maps = [P2, P3, P4, P5]
+        C3 = KL.Conv2D(256, (3, 3), padding="same", name="resnet_p1")(C3)
+        # Rescale to a divisor of the original image size
+        #feature_map = KL.Lambda(lambda x : tf.resize_nearest_neighbor(x, [50, 50], align_corners=True))(C3)
 
-        obj_coord_image = detection_head_graph(C5, 1024)
+        obj_coord_image = detection_head_graph(C3, 1024)
 
         if mode == "training":
 
             # Groundtruth object coordinates
-            input_obj_coord_image = KL.Input(shape=[None, None, 3], name="input_obj_coord_image", dtype=tf.float32)
-            cropped_obj_coord_image = crop_image_to_segmentation_graph(input_obj_coord_image, input_segmentation_image, color)
+            input_obj_coord_image = KL.Input(shape=config.IMAGE_SHAPE.tolist(), name="input_obj_coord_image", dtype=tf.float32)
 
             # Losses
-            # obj_coord_image is cropped already, because we put only the already cropped images into the network in
-            # resnet_graph(cropped_image, "resnet101", 1, stage5=True)
-            loss = KL.Lambda(lambda x: loss_graph(*x), name="loss")(
-                [cropped_obj_coord_image, cropped_segmentation_image, color, obj_coord_image])
+            # Color cannot be passed directly as it is a constant
+            loss = KL.Lambda(lambda x, color: loss_graph(*x, color), name="coord_loss", arguments={'color': color})(
+                [input_obj_coord_image, input_segmentation_image, obj_coord_image])
 
             # Model
             inputs = [input_image, input_segmentation_image, input_obj_coord_image]
@@ -358,6 +345,8 @@ class FlowerPowerCNN:
             outputs = [obj_coord_image, loss]
             model = KM.Model(inputs, outputs, name='flowerpower_cnn')
         else:
+            # The graph does not need the color directly, we unmold detections after running the graph on an image
+            # and only then crop the detection to the segmentation mask, etc.
             model = KM.Model([input_image, input_segmentation_image],
                              [obj_coord_image], name='flowerpower_cnn')
 
@@ -414,13 +403,12 @@ class FlowerPowerCNN:
         # First, clear previously set losses to avoid duplication
         self.keras_model._losses = []
         self.keras_model._per_input_losses = {}
-        loss_names = ["loss"]
+        loss_names = ["coord_loss"]
         for name in loss_names:
             layer = self.keras_model.get_layer(name)
             if layer.output in self.keras_model.losses:
                 continue
-            self.keras_model.add_loss(
-                tf.reduce_mean(layer.output, keep_dims=True))
+            self.keras_model.add_loss(tf.reduce_mean(layer.output, keep_dims=True))
 
         # Add L2 Regularization
         # Skip gamma and beta weights of batch normalization layers.
@@ -599,6 +587,8 @@ class FlowerPowerCNN:
         # Run object coordinate prediction
         obj_coords = self.keras_model.predict([zipped], verbose=0)
 
+        # TODO: Rescale according to the image size in the config
+
         # Process detections
         results = []
         for i, image in enumerate(images):
@@ -609,6 +599,6 @@ class FlowerPowerCNN:
 
     def unmold_detection(pred_obj_coords, segmentation_image):
         #Depending on the size of the predicted object coordinates we need to either
-        #  1. Set the predicted coordinates as ever i-th pixel (if the image was downsampled during detection)
-        #  2. Mask the predicted object coordinates with the segmentation image
+        #  * set only every i-th pixel
+        #  * resize the image to its original ratio
         pass

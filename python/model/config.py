@@ -1,3 +1,5 @@
+import numpy as np
+
 def parse_config_from_json_file(json_file):
     import os
     import json
@@ -7,6 +9,7 @@ def parse_config_from_json_file(json_file):
         config_data = json.load(opened_json_file)
         for entry in config_data:
             setattr(config, entry, config_data[entry])
+        config.__init__()
         return config
 
 class Config:
@@ -27,3 +30,15 @@ class Config:
 
     # The color of the object model in the segmentation mask
     OBJECT_MODEL_COLOR = [255, 255, 255]
+
+    # Maximum size of the images
+    IMAGE_MAX_DIM = 300
+
+    def __init__(self):
+        """Set values of computed attributes."""
+        # Effective batch size
+        self.BATCH_SIZE = self.IMAGES_PER_GPU * self.GPU_COUNT
+
+        # Input image size
+        self.IMAGE_SHAPE = np.array(
+            [self.IMAGE_MAX_DIM, self.IMAGE_MAX_DIM, 3])

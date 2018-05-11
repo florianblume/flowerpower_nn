@@ -23,6 +23,12 @@ def generate_data(images_path, image_extension, object_model_path, ground_truth_
                   cam_info_path, temp_data_path, regenerate_data):
 
     with open(ground_truth_path, 'r') as gt_data_file, open(cam_info_path, 'r') as cam_info_file:
+
+        # The paths where to store the results
+        temp_path_images = os.path.join(temp_data_path, "images")
+        temp_path_segmentation_images = os.path.join(temp_data_path, "segmentation_images")
+        temp_path_obj_coord_images = os.path.join(temp_data_path, "obj_coord_images")
+
         gt_data = json.load(gt_data_file)
         cam_info = json.load(cam_info_file)
         for image_filename in gt_data:
@@ -53,20 +59,36 @@ def generate_data(images_path, image_extension, object_model_path, ground_truth_
                                                                    mode=[renderer.RENDERING_MODE_OBJ_COORDS, 
                                                                    renderer.RENDERING_MODE_SEGMENTATION])
 
-                    object_coordinates_rendering = renderings[renderer.RENDERING_MODE_OBJ_COORDS].astype(np.float16)
-                    object_coordinates_rendering_path = image_filename_without_extension + OBJ_COORD_FILE_EXTENSION
-                    object_coordinates_rendering_path = os.path.join(temp_data_path, object_coordinates_rendering_path)
-                    tiff.imsave(object_coordinates_rendering_path, object_coordinates_rendering)
-
+                    # Render the segmentation image first, to crop all images to the segmentation mask
+                    # TODO: Render segmentation in the desired color
                     segmentation_rendering = renderings[renderer.RENDERING_MODE_SEGMENTATION]
+                    cropped_segmentation = uti.crop_image_on_segmentation_color(segmentation_rendering, 
+                                                                              segmentation_rendering,
+                                                                              [255, 255, 255])
                     segmentation_rendering_path = image_filename_without_extension + SEG_FILE_EXTENSION
-                    segmentation_rendering_path = os.path.join(temp_data_path, segmentation_rendering_path)
-                    cv2.imwrite(segmentation_rendering_path, segmentation_rendering)
+                    segmentation_rendering_path = os.path.join(temp_path_segmentation_images, segmentation_rendering_path)
+                    cv2.imwrite(segmentation_rendering_path, cropped_segmentation)
+
+                    # Render, crop and save object coordinates
+                    object_coordinates_rendering = renderings[renderer.RENDERING_MODE_OBJ_COORDS].astype(np.float16)
+                    # TODO: use desired color from config
+                    object_coordinates = uti.crop_image_on_segmentation_color(object_coordinates_rendering, 
+                                                                              segmentation_rendering,
+                                                                              [255, 255, 255])
+                    object_coordinates_rendering_path = image_filename_without_extension + OBJ_COORD_FILE_EXTENSION
+                    object_coordinates_rendering_path = os.path.join(temp_path_obj_coord_images, object_coordinates_rendering_path)
+                    tiff.imsave(object_coordinates_rendering_path, object_coordinates)
+
+                    # Save the original image in a cropped version as well
+                    cropped_image = uti.crop_image_on_segmentation_color(image, 
+                                                                         segmentation_rendering,
+                                                                         [255, 255, 255])
+                    cropped_image_path = os.path.join(temp_path_images, image_filename)
+                    cv2.imwrite(segmentation_rendering_path, cropped_image)
 
 
 def train(config):
 
-    images_path = config.IMAGES_PATH
     image_extension = config.IMAGE_EXTENSION 
     object_model_path = config.OBJECT_MODEL_PATH 
     ground_truth_path = config.GT_PATH 
@@ -76,7 +98,6 @@ def train(config):
     weights_path = config.WEIGHTS_PATH 
     output_path = config.OUTPUT_PATH
 
-    assert os.path.exists(images_path), "The specified images path does not exist."
     assert os.path.exists(object_model_path), "The specified object model file does not exist."
     assert os.path.exists(ground_truth_path), "The specified ground-truth file does not exist."
     assert os.path.exists(cam_info_path), "The specified camera info file does not exist."
@@ -84,48 +105,61 @@ def train(config):
     if weights_path != "":
         assert os.path.exists(weights_path)
 
+    # The paths where we store the generated object coordinate images as well as
+    # the cropped original and segmentation images
+    temp_path_images = os.path.join(temp_data_path, "images")
+    temp_path_segmentation_images = os.path.join(temp_data_path, "segmentation_images")
+    temp_path_obj_coord_images = os.path.join(temp_data_path, "obj_coord_images")
+
     if regenerate_data:
+
+        print("Generating training data.")
+
         if os.path.exists(temp_data_path):
             shutil.rmtree(temp_data_path)
             
-        os.makedirs(temp_data_path)
+        os.makedirs(temp_path_images)
+        os.makedirs(temp_path_segmentation_images)
+        os.makedirs(temp_path_obj_coord_images)
 
         plt.ioff() # Turn interactive plotting off
         generate_data(images_path, image_extension, object_model_path, ground_truth_path, 
                   cam_info_path, temp_data_path, regenerate_data)
 
     # Retrieve the rendered images to add it to the datasets
-    images = util.get_files_at_path_of_extensions(images_path, [image_extension])
+    images = util.get_files_at_path_of_extensions(temp_path_images, [image_extension])
     util.sort_list_by_num_in_string_entries(images)
-    obj_coordinate_renderings = util.get_files_at_path_of_extensions(temp_data_path, ['tiff'])
-    util.sort_list_by_num_in_string_entries(obj_coordinate_renderings)
-    segmentation_renderings = util.get_files_at_path_of_extensions(temp_data_path, ['png'])
+    segmentation_renderings = util.get_files_at_path_of_extensions(temp_path_segmentation_images, ['png'])
     util.sort_list_by_num_in_string_entries(segmentation_renderings)
+    obj_coordinate_renderings = util.get_files_at_path_of_extensions(temp_path_obj_coord_images, ['tiff'])
+    util.sort_list_by_num_in_string_entries(obj_coordinate_renderings)
 
     train_dataset = dataset.Dataset()
     val_dataset = dataset.Dataset()
 
     indices = np.arange(len(images))
     shuffle(indices)
-
     train_indices_length = int(len(indices) * config.TRAIN_VAL_RATIO)
+
+    print("Creating datasets.")
 
     for i in range(train_indices_length):
         train_index = indices[i]
-        train_dataset.add_image(os.path.join(images_path, images[train_index]))
-        train_dataset.add_segmentation_image(os.path.join(temp_data_path, segmentation_renderings[train_index]))
-        train_dataset.add_obj_coord_image(os.path.join(temp_data_path, obj_coordinate_renderings[train_index]))
+        train_dataset.add_training_example(os.path.join(temp_path_images, images[train_index]),
+                                           os.path.join(temp_path_segmentation_images, segmentation_renderings[train_index]),
+                                           os.path.join(temp_path_obj_coord_images, obj_coordinate_renderings[train_index]))
 
     for i in range(train_indices_length, len(indices)):
         val_index = indices[i]
-        val_dataset.add_image(os.path.join(images_path, images[val_index]))
-        val_dataset.add_segmentation_image(os.path.join(temp_data_path, segmentation_renderings[val_index]))
-        val_dataset.add_obj_coord_image(os.path.join(temp_data_path, obj_coordinate_renderings[val_index]))
+        val_dataset.add_training_example(os.path.join(temp_path_images, images[val_index]),
+                                           os.path.join(temp_path_segmentation_images, segmentation_renderings[val_index]),
+                                           os.path.join(temp_path_obj_coord_images, obj_coordinate_renderings[val_index]))
 
     network_model = model.FlowerPowerCNN('training', config, output_path)
     if weights_path != "":
         network_model.load_weights(weights_path, config.LAYERS_TO_EXCLUDE_FROM_WEIGHT_LOADING)
 
+    print("Starting training.")
     network_model.train(train_dataset, val_dataset, config)
 
 if __name__ == '__main__':
