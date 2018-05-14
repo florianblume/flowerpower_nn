@@ -83,3 +83,6 @@ class TrainingConfig(config.Config):
     # This is not the log folder where the network will store
     # its weights, etc, but only the rendered images etc
     OUTPUT_PATH = ""
+
+    # Indicates whether images should be written to Tensorboard logs
+    WRITE_IMAGES = False

@@ -45,7 +45,7 @@ class BatchNorm(KL.BatchNormalization):
     """
 
     def call(self, inputs, training=None):
-        return super(self.__class__, self).call(inputs, training=False)
+        return super(self.__class__, self).call(inputs, training=True)
 
 ############################################################
 #  Resnet Graph
@@ -180,6 +180,38 @@ def detection_head_graph(feature_map, filters):
                   name="detection_head_" + "final_stage", use_bias=True, padding="same")(x)
     return x
 
+def compute_index_matrix_graph(original_shape, convolved_shape):
+    # If we use an int step size, the offset error distributes when slicing resulting
+    # in a smaller image than the pred_obj_coords
+    # That's why we calculate the floating point range and then take ints individually
+    step_y = tf.cast(original_shape[1] / convolved_shape[1], tf.float32)
+    step_x = tf.cast(original_shape[2] / convolved_shape[2], tf.float32)
+    start_y = tf.cast(step_y / 2, tf.float32)
+    start_x = tf.cast(step_x / 2, tf.float32)
+
+    # Here we create the floating point range which we then use to index the target_obj_coords
+    # and segmentation_image
+    indices_y = tf.range(start_y, original_shape[1], step_y)
+    indices_x = tf.range(start_x, original_shape[2], step_x)
+    indices_y = tf.reshape(indices_y, [-1, 1])
+    indices_y = tf.tile(indices_y, [1, tf.shape(indices_x)[0]])
+    indices_x = tf.reshape(indices_x, [1, -1])
+    indices_x = tf.tile(indices_x, [tf.shape(indices_y)[0], 1])
+    # Now we have two matrices of equal shape that we can combine to obtain the final index pairs
+    indices = tf.stack([indices_y, indices_x], axis=2)
+    # Now retrieve the actual indices which reduce the rounding error compared to calculating
+    # the step size, e.g. 7.9, and striding this step size along the image
+    indices = tf.cast(tf.round(indices), tf.int32)
+    return indices
+
+def extract_elements_graph(image, indices, shape):
+
+    # Gather entries for each batch
+    image = tf.map_fn(lambda x : tf.gather_nd(x, indices), image)
+    # Reshape to [batch, height, width, channels]
+    image = tf.reshape(image, [shape[0], shape[1], shape[2], shape[3]])
+    return image
+
 def loss_graph(target_obj_coords, segmentation_image, pred_obj_coords, color):
     """ Loss for the network.
 
@@ -189,35 +221,27 @@ def loss_graph(target_obj_coords, segmentation_image, pred_obj_coords, color):
 
     # The mask that takes care of downsampling, i.e. that only every i-th pixel is computed
     # in case that the output image is smaller than the input image
+
     original_image_shape = tf.shape(target_obj_coords)
     conv_image_shape = tf.shape(pred_obj_coords)
-    step_y = tf.cast((original_image_shape[1] / conv_image_shape[1]) / 2, tf.int32)
-    step_x = tf.cast((original_image_shape[2] / conv_image_shape[2]) / 2, tf.int32)
 
-    # For each batch we gather the same amount of entries
-    target_obj_coords = target_obj_coords[:,::step_y,::step_x,:]
-    # Reshape to [batch,height of predicted obj coords,width of predicted obj coords,colors]
-    target_obj_coords = tf.resize_nearest_neighbor(target_obj_coords, [conv_image_shape[1], conv_image_shape[2]])
-    tf.Print(target_obj_coords, [target_obj_coords], "Object coordinates")
+    indices = compute_index_matrix_graph(original_image_shape, conv_image_shape)
 
-    # The segmentation mask where the object is actually visible
-    segmentation_mask = tf.equal(segmentation_image, color)
+    target_obj_coords = extract_elements_graph(target_obj_coords, indices, conv_image_shape)
+
+    segmentation_mask = extract_elements_graph(segmentation_image, indices, conv_image_shape)
+    segmentation_mask = tf.equal(segmentation_mask, color)
     segmentation_mask = tf.cast(tf.reduce_all(segmentation_mask, axis=3), tf.float32)
-    segmentation_mask = segmentation_mask[:,::step_y,::step_x,:]
-    segmentation_mask = tf.resize_nearest_neighbor(segmentation_mask, [conv_image_shape[1], conv_image_shape[2]])
-    segmentation_mask_indices = segmentation_mask > 0
-    tf.Print(segmentation_mask_indices, [segmentation_mask_indices], "Segmentation mask")
 
-    # Three channels in the color images
-
-    squared_diff = tf.abs(target_obj_coords - pred_obj_coords)
-    less_than_one = tf.cast(tf.less(squared_diff, 1.0), tf.float32)
-    loss = (less_than_one * 0.5 * squared_diff**2) + (1 - less_than_one) * (squared_diff - 0.5)
-    loss = tf.reduce_sum(loss, axis=3)
+    # L1 loss: sum of squared element-wise differences
+    #target_obj_coords = tf.image.resize_nearest_neighbor(target_obj_coords, [conv_image_shape[1], conv_image_shape[2]])
+    squared_diff = tf.square(target_obj_coords - pred_obj_coords)
+    loss = tf.reduce_mean(squared_diff, axis=3)
+    loss = tf.sqrt(loss)
     loss = loss * segmentation_mask
-    loss = loss * index_mask
-    loss = tf.reduce_sum(loss, axis=2)
-    loss = tf.reduce_sum(loss, axis=1)
+    loss = tf.reduce_mean(loss, axis=2)
+    loss = tf.reduce_mean(loss, axis=1)
+    loss = tf.reduce_mean(loss)
     return loss
 
 def data_generator(dataset, config, shuffle=True, batch_size=1):
@@ -492,7 +516,9 @@ class FlowerPowerCNN:
         # Callbacks
         callbacks = [
             keras.callbacks.TensorBoard(log_dir=self.log_dir,
-                                        histogram_freq=config.HISTOGRAM_FREQ, write_graph=True, write_images=False),
+                                        histogram_freq=config.HISTOGRAM_FREQ, 
+                                        write_graph=True, 
+                                        write_images=config.WRITE_IMAGES),
             keras.callbacks.ModelCheckpoint(self.checkpoint_path,
                                             verbose=0, save_weights_only=True),
         ]
@@ -596,6 +622,43 @@ class FlowerPowerCNN:
                 "obj_coords": obj_coords[i],
             })
         return results
+
+    def run_graph(self, images, segmentation_images, obj_coord_images, outputs):
+        """Runs a sub-set of the computation graph that computes the given
+        outputs.
+        outputs: List of tuples (name, tensor) to compute. The tensors are
+            symbolic TensorFlow tensors and the names are for easy tracking.
+        Returns an ordered dict of results. Keys are the names received in the
+        input and values are Numpy arrays.
+        """
+        model = self.keras_model
+
+        # Organize desired outputs into an ordered dict
+        outputs = OrderedDict(outputs)
+        for o in outputs.values():
+            assert o is not None
+
+        # Build a Keras function to run parts of the computation graph
+        inputs = model.inputs
+        if model.uses_learning_phase and not isinstance(K.learning_phase(), int):
+            inputs += [K.learning_phase()]
+        kf = K.function(model.inputs, list(outputs.values()))
+
+        if self.mode == "training":
+            model_in = [images, segmentation_images, obj_coord_images]
+        else:
+            model_in = [images, segmentation_images]
+
+        if model.uses_learning_phase and not isinstance(K.learning_phase(), int):
+            model_in.append(0.)
+        outputs_np = kf(model_in)
+
+        # Pack the generated Numpy arrays into a a dict and log the results.
+        outputs_np = OrderedDict([(k, v)
+                                  for k, v in zip(outputs.keys(), outputs_np)])
+        for k, v in outputs_np.items():
+            log(k, v)
+        return outputs_np
 
     def unmold_detection(pred_obj_coords, segmentation_image):
         #Depending on the size of the predicted object coordinates we need to either

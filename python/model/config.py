@@ -32,7 +32,7 @@ class Config:
     OBJECT_MODEL_COLOR = [255, 255, 255]
 
     # Maximum size of the images
-    IMAGE_MAX_DIM = 300
+    IMAGE_DIM = 300
 
     def __init__(self):
         """Set values of computed attributes."""
@@ -41,4 +41,4 @@ class Config:
 
         # Input image size
         self.IMAGE_SHAPE = np.array(
-            [self.IMAGE_MAX_DIM, self.IMAGE_MAX_DIM, 3])
+            [self.IMAGE_DIM, self.IMAGE_DIM, 3])
