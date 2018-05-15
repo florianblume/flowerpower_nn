@@ -48,6 +48,10 @@ class TrainingConfig(config.Config):
 
     OBJECT_MODEL_COLOR = [255, 255, 255] 
 
+    IMAGE_DIM = 500
+
+    CACHE_IMAGES = False
+
     # The path to the weights to use for inference
     WEIGHTS_PATH = ""
 

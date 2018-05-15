@@ -1,7 +1,7 @@
 import os
 import shutil
-import cv2
 import json
+import cv2
 import numpy as np
 from random import shuffle
 
@@ -98,12 +98,12 @@ def train(config):
     weights_path = config.WEIGHTS_PATH 
     output_path = config.OUTPUT_PATH
 
-    assert os.path.exists(object_model_path), "The specified object model file does not exist."
-    assert os.path.exists(ground_truth_path), "The specified ground-truth file does not exist."
-    assert os.path.exists(cam_info_path), "The specified camera info file does not exist."
+    assert os.path.exists(object_model_path), "The object model file {} does not exist.".format(object_model_path)
+    assert os.path.exists(ground_truth_path), "The ground-truth file {} does not exist.".format(ground_truth_path)
+    assert os.path.exists(cam_info_path), "The camera info file {} does not exist.".format(cam_info_path)
 
     if weights_path != "":
-        assert os.path.exists(weights_path)
+        assert os.path.exists(weights_path), "The weights file {} does not exist.".format(weights_path)
 
     # The paths where we store the generated object coordinate images as well as
     # the cropped original and segmentation images

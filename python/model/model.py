@@ -3,6 +3,8 @@ import numpy as np
 import datetime
 import re
 import cv2
+import tifffile as tiff
+from random import randint
 
 import logging
 import tensorflow as tf
@@ -13,10 +15,63 @@ import keras.initializers as KI
 import keras.engine as KE
 import keras.models as KM
 
+from . import util
+
 # Requires TensorFlow 1.3+ and Keras 2.0.8+.
 from distutils.version import LooseVersion
 assert LooseVersion(tf.__version__) >= LooseVersion("1.3")
 assert LooseVersion(keras.__version__) >= LooseVersion('2.0.8')
+
+############################################################
+#  Custom callback to visualize predictions after each epoch
+############################################################
+
+class VisualizePredictionCallback(keras.callbacks.Callback):
+
+    output_path = ""
+
+    dataset = None
+
+    model = None
+
+    shape = None
+
+    image_id = 0
+
+    image_name = ""
+
+    def __init__(self, model, output_path, dataset, shape):
+        self.output_path = output_path
+        self.dataset = dataset
+        self.model = model
+        self.shape = shape
+        image_ids = dataset.get_image_ids()
+        self.image_id = image_ids[randint(0, len(image_ids))]
+        self.image_name = dataset.get_image(self.image_id)
+
+    def on_epoch_end(self, epoch, logs={}):
+        output_path = os.path.join(self.output_path, "example_predictions")
+
+        if not os.path.exists(output_path):
+            os.makedirs(output_path)
+
+        file_path = os.path.join(output_path, "{}_epoch_{}.tiff".format(self.image_name, epoch))
+
+        print("Performing sample prediction with model of epoch {}. Result stored at {}.".format(epoch, file_path))
+
+        image = self.dataset.load_image(self.image_id)
+        image = util.resize_image(image, self.shape)[0]
+        segmentation_image = self.dataset.load_image(self.image_id)
+        segmentation_image = util.resize_image(segmentation_image, self.shape)[0]
+
+        # Passing segmentation image as placeholder for the gt object coord image
+        # - it is not actually needed for prediction but the model expects the third image
+        # as it is build for training
+        prediction, loss = self.model.predict([np.array([image]), 
+                                         np.array([segmentation_image]), 
+                                         np.array([segmentation_image])])
+        tiff.imsave(file_path, prediction.astype(np.float16))
+        return
 
 ############################################################
 #  Utility Functions
@@ -239,10 +294,17 @@ def loss_graph(target_obj_coords, segmentation_image, pred_obj_coords, color):
     loss = tf.reduce_mean(squared_diff, axis=3)
     loss = tf.sqrt(loss)
     loss = loss * segmentation_mask
-    loss = tf.reduce_mean(loss, axis=2)
-    loss = tf.reduce_mean(loss, axis=1)
-    loss = tf.reduce_mean(loss)
     return loss
+
+def create_batch_array(batch_size, image_shape):
+    batch_images = np.zeros(
+        (batch_size, image_shape[0], image_shape[1], 3), dtype=np.uint8)
+    batch_segmentation_images = np.zeros(
+        (batch_size, image_shape[0], image_shape[1], 3), dtype=np.uint8)
+    batch_obj_coord_images = np.zeros(
+        (batch_size, image_shape[0], image_shape[1], 3), dtype=np.float32)
+    return batch_images, batch_segmentation_images, batch_obj_coord_images
+
 
 def data_generator(dataset, config, shuffle=True, batch_size=1):
     """A generator that returns the images to detect, as well as their segmentation
@@ -261,25 +323,24 @@ def data_generator(dataset, config, shuffle=True, batch_size=1):
             if shuffle and image_index == 0:
                 np.random.shuffle(image_ids)
 
+            # Init batch arrays
+            if b == 0:
+                batch_images, batch_segmentation_images, batch_obj_coord_images =\
+                        create_batch_array(batch_size, config.IMAGE_SHAPE)
+
             # Get GT object coordinates and segmentation for image.
             image_id = image_ids[image_index]
+
+            new_size = (config.IMAGE_SHAPE[0], config.IMAGE_SHAPE[1])
             image = dataset.load_image(image_id)
             segmentation_image = dataset.load_segmentation_image(image_id)
             obj_coord_image = dataset.load_obj_coord_image(image_id)
 
-            # Init batch arrays
-            if b == 0:
-                batch_images = np.zeros(
-                    (batch_size, config.IMAGE_SHAPE[0], config.IMAGE_SHAPE[1], 3), dtype=image.dtype)
-                batch_segmentation_images = np.zeros(
-                    (batch_size, config.IMAGE_SHAPE[0], config.IMAGE_SHAPE[1], 3), dtype=segmentation_image.dtype)
-                batch_obj_coord_images = np.zeros(
-                    (batch_size, config.IMAGE_SHAPE[0], config.IMAGE_SHAPE[1], 3), dtype=obj_coord_image.dtype)
-
-            new_size = (config.IMAGE_SHAPE[0], config.IMAGE_SHAPE[1])
-            image = cv2.resize(image, new_size, interpolation=cv2.INTER_AREA)
-            segmentation_image = cv2.resize(segmentation_image, new_size, interpolation=cv2.INTER_AREA)
-            obj_coord_image = cv2.resize(obj_coord_image, new_size, interpolation=cv2.INTER_AREA)
+            # The utility function also returns the scale and padding which we dont' need here
+            # thus we only retrieve the first return value
+            image = util.resize_image(image, new_size)[0]
+            segmentation_image = util.resize_image(segmentation_image, new_size)[0]
+            obj_coord_image = util.resize_image(obj_coord_image, new_size)[0]
 
             batch_images[b] = image
             batch_segmentation_images[b] = segmentation_image
@@ -521,6 +582,7 @@ class FlowerPowerCNN:
                                         write_images=config.WRITE_IMAGES),
             keras.callbacks.ModelCheckpoint(self.checkpoint_path,
                                             verbose=0, save_weights_only=True),
+            VisualizePredictionCallback(self, self.log_dir, train_dataset, config.IMAGE_SHAPE)
         ]
 
         # Common parameters to pass to fit_generator()
