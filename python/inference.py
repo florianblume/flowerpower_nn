@@ -10,7 +10,7 @@ import util.util as util
 
 from model import dataset
 from model import model
-from model import config
+from model import inference_config
 
 def eulerAnglesToRotationMatrix(theta) :
 
@@ -158,5 +158,6 @@ if __name__ == '__main__':
                         required=True,
                         help="The path to the config file.")
     arguments = parser.parse_args()
-    train_config = config.parse_config_from_json_file(arguments.config)
-    inference(train_config)
+    config = inference_config.InferenceConfig()
+    config.parse_config_from_json_file(arguments.config)
+    inference(config)

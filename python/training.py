@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 
 from model import dataset
 from model import model
-from model import config
+from model import training_config
 
 OBJ_COORD_FILE_EXTENSION = "_obj_coordinates.tiff"
 SEG_FILE_EXTENSION = "_segmentation.png"
@@ -173,5 +173,6 @@ if __name__ == '__main__':
                         required=True,
                         help="The path to the config file.")
     arguments = parser.parse_args()
-    train_config = config.parse_config_from_json_file(arguments.config)
-    train(train_config)
+    config = training_config.TrainingConfig()
+    config.parse_config_from_json_file(arguments.config)
+    train(config)

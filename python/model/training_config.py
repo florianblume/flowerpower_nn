@@ -1,6 +1,6 @@
 # Configuration of the neural network
 
-import config.Config
+from . import config
 
 class TrainingConfig(config.Config):
 
@@ -53,7 +53,7 @@ class TrainingConfig(config.Config):
 
     # We do not use color during training because we render our own segmentation
     # images using white color and the ground truth pose
-    SEGMENTATION_COLOR = None
+    SEGMENTATION_COLOR = [255, 255, 255]
 
     IMAGE_DIM = 500
 

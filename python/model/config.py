@@ -1,18 +1,16 @@
 import numpy as np
 
-def parse_config_from_json_file(json_file):
-    import os
-    import json
-
-    with open(json_file, 'r') as opened_json_file:
-        config = Config()
-        config_data = json.load(opened_json_file)
-        for entry in config_data:
-            setattr(config, entry, config_data[entry])
-        config.__init__()
-        return config
-
 class Config:
+
+    def parse_config_from_json_file(self, json_file):
+        import os
+        import json
+
+        with open(json_file, 'r') as opened_json_file:
+            config_data = json.load(opened_json_file)
+            for entry in config_data:
+                setattr(self, entry, config_data[entry])
+            self.__init__()
 
     NAME = "Default"  # Override in config class
 

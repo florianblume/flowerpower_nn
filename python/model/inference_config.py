@@ -1,6 +1,6 @@
 # Configuration of the neural network
 
-import config.Config
+from . import config
 
 class InferenceConfig(config.Config):
 
