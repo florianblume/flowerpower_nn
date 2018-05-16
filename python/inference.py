@@ -11,8 +11,14 @@ from model import dataset
 from model import model
 from model import config
 
-def ransac(prediction, num_iterations=10):
-    pass
+def ransac(prediction, cam_info, num_iterations=10):
+    obj_coords = prediction['obj_coords']
+    step_y = prediction['step_y']
+    step_x = prediction['step_x']
+    indices = prediction != [np.nan, np.nan, np.nan]
+    pairs = []
+    for index in indices:
+        pairs.append({"2d" : index, "3d" : prediction[index]})
 
 def inference(config):
 
@@ -80,14 +86,15 @@ def inference(config):
     # We only store the filename + extension
     object_model_path = os.path.basename(object_model_path)
 
-    for i in range(len(images)):
-        prediction = model.predict([images[i]], [cropped_segmentation_images[i]], verbose=1)
-        pose = ransac(prediction, ransac_iterations)
-        key = os.path.basename(images_paths[i])
-        results.append({key : [{"R" : pose.R.flatten().tolist(), 
-                                "t" : pose.t.flatten().tolist(), 
-                                "bb" : bbs[i].flatten().tolist(), 
-                                "obj" : object_model_path}]})
+    with open(cam_info_path, "r") as cam_info:
+        for i in range(len(images)):
+            key = os.path.basename(images_paths[i])
+            prediction = model.predict([images[i]], [cropped_segmentation_images[i]], verbose=1)
+            pose = ransac(prediction, cam_info[key], ransac_iterations)
+            results.append({key : [{"R" : pose.R.flatten().tolist(), 
+                                    "t" : pose.t.flatten().tolist(), 
+                                    "bb" : bbs[i].flatten().tolist(), 
+                                    "obj" : object_model_path}]})
 
     print("Writing results to {}".format(output_file))
     with open(output_file, "w") as json_file:
