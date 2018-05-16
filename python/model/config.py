@@ -28,9 +28,6 @@ class Config:
     # Strides for the ResNet graph, where applicable
     STRIDES = 2
 
-    # The color of the object model in the segmentation mask
-    OBJECT_MODEL_COLOR = [255, 255, 255]
-
     # Maximum size of the images
     IMAGE_DIM = 300
 

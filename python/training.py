@@ -60,7 +60,6 @@ def generate_data(images_path, image_extension, object_model_path, ground_truth_
                                                                    renderer.RENDERING_MODE_SEGMENTATION])
 
                     # Render the segmentation image first, to crop all images to the segmentation mask
-                    # TODO: Render segmentation in the desired color
                     segmentation_rendering = renderings[renderer.RENDERING_MODE_SEGMENTATION]
                     cropped_segmentation = uti.crop_image_on_segmentation_color(segmentation_rendering, 
                                                                               segmentation_rendering,
@@ -88,6 +87,9 @@ def generate_data(images_path, image_extension, object_model_path, ground_truth_
 
 
 def train(config):
+
+    # We do not retrieve the color from the config (it should not be specified anyway)
+    # because we render our own segmentation images using white color
 
     image_extension = config.IMAGE_EXTENSION 
     object_model_path = config.OBJECT_MODEL_PATH 

@@ -6,7 +6,10 @@ import os
 import re
 import numpy
 
-def crop_image_on_segmentation_color(image, segmentation_mask, color):
+def merge_gts(gt1, gt2):
+    pass
+
+def crop_image_on_segmentation_color(image, segmentation_mask, color, return_frame=False):
     """ This function returns the rectangle that results when cropping the mask
     """
     indices = numpy.where(segmentation_mask == color)
@@ -17,7 +20,10 @@ def crop_image_on_segmentation_color(image, segmentation_mask, color):
     x_start = np.min(x_indices)
     x_end = np.max(x_indices)
     cropped_image = image[y_start : y_end + 1, x_start : x_end + 1]
-    return cropped_image
+    if return_frame:
+        return cropped_image, (y_start, y_end + 1, x_start, x_end + 1)
+    else:
+        return cropped_image
 
 def get_files_at_path_of_extensions(path, extensions):
     import os

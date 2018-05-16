@@ -47,7 +47,9 @@ class VisualizePredictionCallback(keras.callbacks.Callback):
         self.shape = shape
         image_ids = dataset.get_image_ids()
         self.image_id = image_ids[randint(0, len(image_ids))]
-        self.image_name = dataset.get_image(self.image_id)
+        image_name = os.path.basename(dataset.get_image(self.image_id))
+        image_name = os.path.splitext(image_name)[0]
+        self.image_name = image_name
 
     def on_epoch_end(self, epoch, logs={}):
         output_path = os.path.join(self.output_path, "example_predictions")
@@ -267,7 +269,7 @@ def extract_elements_graph(image, indices, shape):
     image = tf.reshape(image, [shape[0], shape[1], shape[2], shape[3]])
     return image
 
-def loss_graph(target_obj_coords, segmentation_image, pred_obj_coords, color):
+def loss_graph(pred_obj_coords, segmentation_image, target_obj_coords, color):
     """ Loss for the network.
 
     target_obj_coords: [batch, height, width, 3]. The ground-truth object coordinates.
@@ -296,14 +298,17 @@ def loss_graph(target_obj_coords, segmentation_image, pred_obj_coords, color):
     loss = loss * segmentation_mask
     return loss
 
-def create_batch_array(batch_size, image_shape):
+def create_batch_array(batch_size, image_shape, with_obj_coords=True):
     batch_images = np.zeros(
         (batch_size, image_shape[0], image_shape[1], 3), dtype=np.uint8)
     batch_segmentation_images = np.zeros(
         (batch_size, image_shape[0], image_shape[1], 3), dtype=np.uint8)
-    batch_obj_coord_images = np.zeros(
-        (batch_size, image_shape[0], image_shape[1], 3), dtype=np.float32)
-    return batch_images, batch_segmentation_images, batch_obj_coord_images
+    if with_obj_coords:
+        batch_obj_coord_images = np.zeros(
+            (batch_size, image_shape[0], image_shape[1], 3), dtype=np.float32)
+        return batch_images, batch_segmentation_images, batch_obj_coord_images
+    else:
+        return batch_images, batch_segmentation_images
 
 
 def data_generator(dataset, config, shuffle=True, batch_size=1):
@@ -397,7 +402,6 @@ class FlowerPowerCNN:
         # Returns a list of the last layers of each stage, 5 in total.
         C1, C2, C3, C4, C5 = resnet_graph(input_image, "resnet35", stage5=False)
 
-        # We only use C3, as the deeper layers result in a receptive field that is too large
         """
         P3 = KL.Conv2D(256, (1, 1), name='fpn_c3p3')(C3)
         P2 = KL.Add(name="fpn_p3add")([
@@ -408,24 +412,25 @@ class FlowerPowerCNN:
             KL.Conv2D(256, (1, 1), name='fpn_c1p1')(C1)])
         """
 
+        # We use the layer C3 here, as with the given strides this results in a receptive field of 51
+        # (see https://fomoro.com/tools/receptive-fields/ for details) which keeps the network towards
+        # a patch-based approach instead of a global one
         C3 = KL.Conv2D(256, (3, 3), padding="same", name="resnet_p1")(C3)
-        # Rescale to a divisor of the original image size
-        #feature_map = KL.Lambda(lambda x : tf.resize_nearest_neighbor(x, [50, 50], align_corners=True))(C3)
 
         obj_coord_image = detection_head_graph(C3, 1024)
 
         if mode == "training":
 
             # Groundtruth object coordinates
-            input_obj_coord_image = KL.Input(shape=config.IMAGE_SHAPE.tolist(), name="input_obj_coord_image", dtype=tf.float32)
+            input_gt_obj_coord_image = KL.Input(shape=config.IMAGE_SHAPE.tolist(), name="input_obj_coord_image", dtype=tf.float32)
 
             # Losses
             # Color cannot be passed directly as it is a constant
             loss = KL.Lambda(lambda x, color: loss_graph(*x, color), name="coord_loss", arguments={'color': color})(
-                [input_obj_coord_image, input_segmentation_image, obj_coord_image])
+                [obj_coord_image, input_segmentation_image, input_gt_obj_coord_image])
 
             # Model
-            inputs = [input_image, input_segmentation_image, input_obj_coord_image]
+            inputs = [input_image, input_segmentation_image, input_gt_obj_coord_image]
 
             outputs = [obj_coord_image, loss]
             model = KM.Model(inputs, outputs, name='flowerpower_cnn')
@@ -541,7 +546,7 @@ class FlowerPowerCNN:
                 self.epoch = int(m.group(6)) + 1
 
         # Directory for training logs
-        self.log_dir = os.path.join(self.model_dir, "{}{:%Y%m%dT%H%M}".format(
+        self.log_dir = os.path.join(self.model_dir, "{}_{:%Y%m%dT%H%M}".format(
             self.config.NAME.lower(), now))
 
         # Path to save after each epoch. Include placeholders that get filled by Keras.
@@ -662,7 +667,7 @@ class FlowerPowerCNN:
         """
         assert self.mode == "inference", "Create model in inference mode."
         assert len(images) == self.config.BATCH_SIZE, "len(images) must be equal to BATCH_SIZE"
-        assert len(images) == len(segmentation_images)
+        assert len(images) == len(segmentation_images), "len(images) must be equal to len(segmentation_images)"
 
         if verbose:
             log("Processing {} images".format(len(images)))
@@ -670,18 +675,67 @@ class FlowerPowerCNN:
                 print(type(image))
                 log("image", image)
 
-        zipped = zip(images, segmentation_images)
+        prepared_images = []
+        prepared_segmentation_images = []
+
+        for index in range(len(images)):
+            # We need to store the scaling and padding as well, to retrieve the
+            # actual coordinates after inference
+            image, image_scale, image_padding = util.resize_image(image, self.shape)
+            prepared_images.append({"image" : image,
+                                    "scale" : image_scale,
+                                    "padding" : image_padding})
+            segmentation_image, segmentation_image_scale, segmentation_image_padding = \
+                                util.resize_image(segmentation_image, self.shape)
+            prepared_segmentation_images.append({
+                                    "image" : segmentation_image,
+                                    "scale" : segmentation_image_scale,
+                                    "padding" segmentation_image_padding
+                })
+
+
+        # Supports different segmentation colors already -> use the config to specify the color
+        zipped = zip(images[:]["image"], segmentation_images[:]["segmentation_image"])
 
         # Run object coordinate prediction
-        obj_coords = self.keras_model.predict([zipped], verbose=0)
-
-        # TODO: Rescale according to the image size in the config
-
-        # Process detections
+        predictions = self.keras_model.predict([zipped], verbose=0)
         results = []
-        for i, image in enumerate(images):
+        if verbose:
+            print("Processing inference results.")
+        for i, prediction in enumerate(predictions):
+            prepared_image = prepared_images[i]
+
+            # To be able to tell which pixel in the prediction corresponds to
+            # which pixel in the original image - predictions are smaller than
+            # the original image meaning that only e.g. every 10-th pixel in
+            # the input image is predicted
+
+            step_y = prepared_image["image"].shape[0] / float(prediction.shape[0])
+            step_x = prepared_image["image"].shape[1] / float(prediction.shape[1])
+
+            v_padding, h_padding, _ = prepared_image["padding"]
+            v_padding /= step_y
+            h_padding /= step_x
+            scale = prepared_image["scale"]
+            # Remove the padding that was added and rescale with the scale corresponding
+            # to how the input image was resized to fill the requeste image dimensions
+            cropped_prediction = prediction[v_padding[0]:v_padding[1], h_padding[0]:h_padding[1]]
+            resized_prediction = cv2.resize(cropped_prediction, fx=prepared_image["scale"], fy=prepared_image["scale"])
+
+            # Restrict the prediction to the segmentation pixels
+            resized_segmentation_image = cv2.resize(prepared_segmentation_images[i]["image"], 
+                                            [resized_prediction.shape[0], resized_prediction.shape[1]], 
+                                            interpolation = cv2.INTER_CUBIC)
+            segmentation_indices = resized_segmentation_image == config.SEGMENTATION_COLOR
+            result = np.empty(resized_prediction.shape)
+            # Fill with NaNs so that it is clear which coordinates were actually predicted
+            result[:] = np.nan
+            result[segmentation_indices] = resized_segmentation_image[segmentation_indices]
+
             results.append({
-                "obj_coords": obj_coords[i],
+                "obj_coords": result,
+                "step_y" : step_y,
+                "step_x" : step_x
             })
         return results
 

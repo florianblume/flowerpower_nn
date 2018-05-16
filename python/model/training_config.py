@@ -34,6 +34,11 @@ class TrainingConfig(config.Config):
     # Parameters for TensorBoard
     HISTOGRAM_FREQ = 0
 
+    # Batch size is GPU_COUNT * IMAGES_PER_GPU
+    GPU_COUNT = 1
+
+    IMAGES_PER_GPU = 26
+
     # All configurations specific to paths etc
 
     # The path to the images
@@ -46,11 +51,11 @@ class TrainingConfig(config.Config):
     # object coordinates, if specified to re-render them
     OBJECT_MODEL_PATH = ""   
 
-    OBJECT_MODEL_COLOR = [255, 255, 255] 
+    # We do not use color during training because we render our own segmentation
+    # images using white color and the ground truth pose
+    SEGMENTATION_COLOR = None
 
     IMAGE_DIM = 500
-
-    CACHE_IMAGES = False
 
     # The path to the weights to use for inference
     WEIGHTS_PATH = ""
