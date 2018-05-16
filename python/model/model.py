@@ -70,8 +70,9 @@ class VisualizePredictionCallback(keras.callbacks.Callback):
         # - it is not actually needed for prediction but the model expects the third image
         # as it is build for training
         prediction, loss = self.model.predict([np.array([image]), 
-                                         np.array([segmentation_image]), 
-                                         np.array([segmentation_image])])
+                                               np.array([segmentation_image]), 
+                                               np.array([segmentation_image])
+                                              ])
         tiff.imsave(file_path, prediction.astype(np.float16))
         return
 
@@ -395,7 +396,7 @@ class FlowerPowerCNN:
         input_segmentation_image = KL.Input(shape=config.IMAGE_SHAPE.tolist(), name="input_segmentation_image", dtype=tf.float32)
 
         # The color of the object model in the segmentation image
-        color = K.constant(config.OBJECT_MODEL_COLOR, dtype=tf.float32)
+        color = K.constant(config.SEGMENTATION_COLOR, dtype=tf.float32)
 
         # Build the shared convolutional layers.
         # Bottom-up Layers
@@ -657,7 +658,7 @@ class FlowerPowerCNN:
                 log("{}{:20}   ({})".format(" " * indent, layer.name,
                                             layer.__class__.__name__))
 
-    def detect(self, images, segmentation_images, verbose=0):
+    def predict(self, images, segmentation_images, verbose=0):
         """Runs the detection pipeline.
 
         images: List of images, potentially of different sizes.
@@ -676,29 +677,30 @@ class FlowerPowerCNN:
                 log("image", image)
 
         prepared_images = []
+        _prepared_images = []
         prepared_segmentation_images = []
+        _prepared_segmentation_images = []
 
         for index in range(len(images)):
             # We need to store the scaling and padding as well, to retrieve the
             # actual coordinates after inference
-            image, image_scale, image_padding = util.resize_image(image, self.shape)
+            image, image_scale, image_padding = util.resize_image(images[index], self.config.IMAGE_SHAPE[:2])
             prepared_images.append({"image" : image,
                                     "scale" : image_scale,
                                     "padding" : image_padding})
+            _prepared_images.append(image)
             segmentation_image, segmentation_image_scale, segmentation_image_padding = \
-                                util.resize_image(segmentation_image, self.shape)
+                                util.resize_image(segmentation_images[index], self.config.IMAGE_SHAPE[:2])
             prepared_segmentation_images.append({
                                     "image" : segmentation_image,
                                     "scale" : segmentation_image_scale,
-                                    "padding" segmentation_image_padding
+                                    "padding" : segmentation_image_padding
                 })
-
-
-        # Supports different segmentation colors already -> use the config to specify the color
-        zipped = zip(images[:]["image"], segmentation_images[:]["segmentation_image"])
+            _prepared_segmentation_images.append(segmentation_image)
 
         # Run object coordinate prediction
-        predictions = self.keras_model.predict([zipped], verbose=0)
+        predictions = self.keras_model.predict([np.array(_prepared_images), 
+                                                np.array(_prepared_segmentation_images)], verbose=verbose)
         results = []
         if verbose:
             print("Processing inference results.")
@@ -712,25 +714,37 @@ class FlowerPowerCNN:
 
             step_y = prepared_image["image"].shape[0] / float(prediction.shape[0])
             step_x = prepared_image["image"].shape[1] / float(prediction.shape[1])
+            scale = prepared_image["scale"]
 
             v_padding, h_padding, _ = prepared_image["padding"]
-            v_padding /= step_y
-            h_padding /= step_x
-            scale = prepared_image["scale"]
+            v_padding = np.asarray(v_padding).astype(np.float32) / step_y
+            h_padding = np.asarray(h_padding).astype(np.float32) / step_x
+            v_padding = v_padding.astype(np.int32)
+            h_padding = h_padding.astype(np.int32)
+            # The padding does not store where it begins index-wise but the width of the padding
+            # Of course we only need to take care of the right and bottom end, the left and top
+            # padding function as offset where the actual image starts
+            v_padding[1] = prediction.shape[0] - v_padding[1]
+            h_padding[1] = prediction.shape[1] - h_padding[1]
+
             # Remove the padding that was added and rescale with the scale corresponding
             # to how the input image was resized to fill the requeste image dimensions
             cropped_prediction = prediction[v_padding[0]:v_padding[1], h_padding[0]:h_padding[1]]
-            resized_prediction = cv2.resize(cropped_prediction, fx=prepared_image["scale"], fy=prepared_image["scale"])
+            h, w = cropped_prediction.shape[:2]
+            new_size = (int(h / scale), int(w / scale))
+            resized_prediction = cv2.resize(cropped_prediction, 
+                                            new_size, 
+                                            interpolation = cv2.INTER_CUBIC)
 
             # Restrict the prediction to the segmentation pixels
             resized_segmentation_image = cv2.resize(prepared_segmentation_images[i]["image"], 
-                                            [resized_prediction.shape[0], resized_prediction.shape[1]], 
+                                            (resized_prediction.shape[0], resized_prediction.shape[1]), 
                                             interpolation = cv2.INTER_CUBIC)
-            segmentation_indices = resized_segmentation_image == config.SEGMENTATION_COLOR
-            result = np.empty(resized_prediction.shape)
-            # Fill with NaNs so that it is clear which coordinates were actually predicted
-            result[:] = np.nan
-            result[segmentation_indices] = resized_segmentation_image[segmentation_indices]
+            segmentation_indices = resized_segmentation_image == self.config.SEGMENTATION_COLOR
+            result = np.empty(resized_prediction.shape, dtype=np.float32)
+            # Fill with 0 so that noise in the background is eliminated
+            result[:] = 0
+            result[segmentation_indices] = resized_prediction[segmentation_indices]
 
             results.append({
                 "obj_coords": result,

@@ -4,7 +4,6 @@
 import numpy as np
 import os
 import re
-import numpy
 
 def merge_gts(gt1, gt2):
     pass
@@ -12,7 +11,7 @@ def merge_gts(gt1, gt2):
 def crop_image_on_segmentation_color(image, segmentation_mask, color, return_frame=False):
     """ This function returns the rectangle that results when cropping the mask
     """
-    indices = numpy.where(segmentation_mask == color)
+    indices = np.where(segmentation_mask == color)
     y_indices = indices[0]
     y_start = np.min(y_indices)
     y_end = np.max(y_indices)

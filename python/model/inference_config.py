@@ -29,8 +29,14 @@ class InferenceConfig(config.Config):
 
     IMAGES_PER_GPU = 26
 
+    # Limits the images to run inference on, when set to 0, all images will be used
+    LIMIT = 0
+
     # The path to the camera info file related to the images
     CAM_INFO_PATH = ""
+
+    # The path where to network can store intermediate results etc
+    OUTPUT_PATH = ""
 
     # The file that the results are going to be written to
     OUTPUT_FILE = ""
