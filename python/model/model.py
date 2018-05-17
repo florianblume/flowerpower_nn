@@ -70,7 +70,7 @@ class VisualizePredictionCallback(keras.callbacks.Callback):
         # Passing segmentation image as placeholder for the gt object coord image
         # - it is not actually needed for prediction but the model expects the third image
         # as it is build for training
-        prediction, loss = self.model.keras_model.predict([np.array([image]), 
+        prediction, loss = self.model.predict([np.array([image]), 
                                                np.array([segmentation_image]), 
                                                np.array([segmentation_image])
                                               ])
@@ -317,7 +317,7 @@ def loss_graph(pred_obj_coords, segmentation_image, target_obj_coords, color):
     loss = tf.reduce_mean(squared_diff, axis=3)
     loss = tf.sqrt(loss)
     loss = tf.boolean_mask(loss, segmentation_mask)
-    return loss
+    return tf.reduce_mean(loss)
 
 def create_batch_array(batch_size, image_shape, with_obj_coords=True):
     batch_images = np.zeros(
