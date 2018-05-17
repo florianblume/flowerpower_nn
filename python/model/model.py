@@ -589,7 +589,7 @@ class FlowerPowerCNN:
         epochs = config.EPOCHS
         layers = config.LAYERS_TO_TRAIN
 
-        assert len(learning_rates) == len(epochs) == len(layers), 
+        assert len(learning_rates) == len(epochs) == len(layers), \
                         "Number of epochs, learning rates and layers must match."
 
         # Pre-defined layer regular expressions
@@ -634,7 +634,7 @@ class FlowerPowerCNN:
             fit_kwargs["validation_data"] = next(val_generator)
             fit_kwargs["validation_steps"] = self.config.VALIDATION_STEPS
 
-        for index in range(len(learning_rates))
+        for index in range(len(learning_rates)):
             current_learning_rate = learning_rates[index]
             current_epochs = epochs[index]
             current_layers = layers[index]
@@ -648,7 +648,7 @@ class FlowerPowerCNN:
 
 
             if current_layers in layer_regex.keys():
-                current_layers = layer_regex[layers]
+                current_layers = layer_regex[current_layers]
 
             self.set_trainable(current_layers)
             self.compile(current_learning_rate, self.config.LEARNING_MOMENTUM)
