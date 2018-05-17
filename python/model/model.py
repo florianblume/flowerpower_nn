@@ -585,9 +585,12 @@ class FlowerPowerCNN:
 
     def train(self, train_dataset, val_dataset, config, verbose=0):
         
-        learning_rate = config.LEARNING_RATE
+        learning_rates = config.LEARNING_RATE
         epochs = config.EPOCHS
         layers = config.LAYERS_TO_TRAIN
+
+        assert len(learning_rates) == len(epochs) == len(layers), 
+                        "Number of epochs, learning rates and layers must match."
 
         # Pre-defined layer regular expressions
         layer_regex = {
@@ -600,8 +603,6 @@ class FlowerPowerCNN:
             # All layers
             "all": ".*"
         }
-        if layers in layer_regex.keys():
-            layers = layer_regex[layers]
 
         # Data generators
         train_generator = data_generator(train_dataset, self.config, shuffle=True,
@@ -633,30 +634,43 @@ class FlowerPowerCNN:
             fit_kwargs["validation_data"] = next(val_generator)
             fit_kwargs["validation_steps"] = self.config.VALIDATION_STEPS
 
-        # Train
-        log("\nStarting at epoch {}. LR={}\n".format(self.epoch, learning_rate))
-        log("Checkpoint Path: {}".format(self.checkpoint_path))
-        self.set_trainable(layers)
-        self.compile(learning_rate, self.config.LEARNING_MOMENTUM)
+        for index in range(len(learning_rates))
+            current_learning_rate = learning_rates[index]
+            current_epochs = epochs[index]
+            current_layers = layers[index]
 
-        if verbose > 0:
-            run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
-            run_metadata = tf.RunMetadata()
+            # Train
+            if index == 0:
+                log("\nStarting at epoch {}. LR={}\n".format(self.epoch, current_learning_rate))
+                log("Checkpoint Path: {}".format(self.checkpoint_path))
+            else:
+                log("\nContinuing at epoch {}. LR={}\n".format(self.epoch, current_learning_rate))
 
-        self.keras_model.fit_generator(
-            train_generator,
-            initial_epoch=self.epoch,
-            epochs=epochs,
-            **fit_kwargs
-        )
 
-        if verbose > 0:
-            timeline = timeline.Timeline(step_stats=run_metadata.step_stats)
-            chrome_trace = tl.generate_chrome_trace_format()
-            with open(os.path.join(config.OUTPUT_PATH, 'timeline.json'), 'w') as f:
-                f.write(chrome_trace)
+            if current_layers in layer_regex.keys():
+                current_layers = layer_regex[layers]
 
-        self.epoch = max(self.epoch, epochs)
+            self.set_trainable(current_layers)
+            self.compile(current_learning_rate, self.config.LEARNING_MOMENTUM)
+
+            if verbose > 0:
+                run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+                run_metadata = tf.RunMetadata()
+
+            self.keras_model.fit_generator(
+                train_generator,
+                initial_epoch=self.epoch,
+                epochs=current_epochs,
+                **fit_kwargs
+            )
+
+            if verbose > 0:
+                timeline = timeline.Timeline(step_stats=run_metadata.step_stats)
+                chrome_trace = tl.generate_chrome_trace_format()
+                with open(os.path.join(config.OUTPUT_PATH, 'timeline.json'), 'w') as f:
+                    f.write(chrome_trace)
+
+            self.epoch = max(self.epoch, current_epochs)
 
 
     def set_trainable(self, layer_regex, keras_model=None, indent=0, verbose=1):

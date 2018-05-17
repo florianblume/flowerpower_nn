@@ -14,7 +14,7 @@ class TrainingConfig(config.Config):
     STEPS_PER_EPOCH = 1000
 
     # The number of epochs to run the training for
-    EPOCHS = 300
+    EPOCHS = [300]
 
     # Number of validation steps to run at the end of every training epoch.
     # A bigger number improves accuracy of validation stats, but slows
@@ -25,7 +25,7 @@ class TrainingConfig(config.Config):
     # The Mask RCNN paper uses lr=0.02, but on TensorFlow it causes
     # weights to explode. Likely due to differences in optimzer
     # implementation.
-    LEARNING_RATE = 0.001
+    LEARNING_RATE = [0.001]
     LEARNING_MOMENTUM = 0.9
 
     # Weight decay regularization
@@ -67,7 +67,7 @@ class TrainingConfig(config.Config):
     LAYERS_TO_EXCLUDE_FROM_WEIGHT_LOADING = []
 
     # The layers to train
-    LAYERS_TO_TRAIN = []
+    LAYERS_TO_TRAIN = ['all']
 
     # The path to the camera info file related to the images
     CAM_INFO_PATH = ""
