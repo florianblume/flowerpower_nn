@@ -30,3 +30,20 @@ def get_files_at_path_of_extensions(path, extensions):
 
 def sort_list_by_num_in_string_entries(list_of_strings):
     list_of_strings.sort(key=lambda var:[int(x) if x.isdigit() else x for x in re.findall(r'[^0-9]|[0-9]+', var)])
+
+def is_number(n, _type):
+    try:
+        _type(n)
+    except ValueError:
+        return False
+    return True
+
+def convert_printed_to_numpy_array(printed_array, _type):
+    temp = printed_array.split("[")
+    # Flatten array
+    temp = [s.split("]") for s in temp]
+    temp = [s for x in temp for s in x]
+    temp = [s.split(" ") for s in temp]
+    temp = [s for x in temp for s in x]
+    temp = [_type(n) for n in temp if is_number(n, _type)]
+    return np.array(temp)

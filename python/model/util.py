@@ -21,9 +21,9 @@ def resize_image(image, shape):
         if image.dtype == np.float32:
             # Scipy can't handle 3-channel float images, but OpenCV hangs during training\
             # and Skimage needs floats to be within [0, 1]
-            channel_0 = scipy.misc.imresize(image[:,:,0], (int(scale * w), int(scale * h)), mode="F")
-            channel_1 = scipy.misc.imresize(image[:,:,1], (int(scale * w), int(scale * h)), mode="F")
-            channel_2 = scipy.misc.imresize(image[:,:,2], (int(scale * w), int(scale * h)), mode="F")
+            channel_0 = scipy.misc.imresize(image[:,:,0], (int(scale * h), int(scale * w)), mode="F")
+            channel_1 = scipy.misc.imresize(image[:,:,1], (int(scale * h), int(scale * w)), mode="F")
+            channel_2 = scipy.misc.imresize(image[:,:,2], (int(scale * h), int(scale * w)), mode="F")
             image = np.stack([channel_0, channel_1, channel_2], axis=2)
         else:
             image = scipy.misc.imresize(image, (int(scale * h), int(scale * w)))

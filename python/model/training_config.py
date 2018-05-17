@@ -57,6 +57,9 @@ class TrainingConfig(config.Config):
 
     IMAGE_DIM = 500
 
+    # Indicates whether batch normalization layers are trainable
+    BATCH_NORM_TRAINABLE = True
+
     # The path to the weights to use for inference
     WEIGHTS_PATH = ""
 

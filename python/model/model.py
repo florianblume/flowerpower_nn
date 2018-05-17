@@ -8,6 +8,7 @@ from random import randint
 
 import logging
 import tensorflow as tf
+from tensorflow.python.client import timeline
 import keras
 import keras.backend as K
 import keras.layers as KL
@@ -102,8 +103,14 @@ class BatchNorm(KL.BatchNormalization):
     so we disable it here.
     """
 
-    def call(self, inputs, training=None):
-        return super(self.__class__, self).call(inputs, training=True)
+    trainable = True
+
+    def __init__(self, axis, name, trainable=True):
+        super().__init__(axis=axis, name=name)
+        self.trainable = trainable
+
+    def call(self, inputs, training=True):
+        return super(self.__class__, self).call(inputs, training=self.trainable)
 
 ############################################################
 #  Resnet Graph
@@ -113,7 +120,7 @@ class BatchNorm(KL.BatchNormalization):
 # https://github.com/fchollet/deep-learning-models/blob/master/resnet50.py
 
 def identity_block(input_tensor, kernel_size, filters, stage, block,
-                   use_bias=True):
+                   use_bias=True, batch_norm_trainable=True):
     """The identity_block is the block that has no conv layer at shortcut
     # Arguments
         input_tensor: input tensor
@@ -128,17 +135,17 @@ def identity_block(input_tensor, kernel_size, filters, stage, block,
 
     x = KL.Conv2D(nb_filter1, (1, 1), name=conv_name_base + '2a',
                   use_bias=use_bias)(input_tensor)
-    x = BatchNorm(axis=3, name=bn_name_base + '2a')(x)
+    x = BatchNorm(axis=3, name=bn_name_base + '2a', trainable=batch_norm_trainable)(x)
     x = KL.Activation('relu')(x)
 
     x = KL.Conv2D(nb_filter2, (kernel_size, kernel_size), padding='same',
                   name=conv_name_base + '2b', use_bias=use_bias)(x)
-    x = BatchNorm(axis=3, name=bn_name_base + '2b')(x)
+    x = BatchNorm(axis=3, name=bn_name_base + '2b', trainable=batch_norm_trainable)(x)
     x = KL.Activation('relu')(x)
 
     x = KL.Conv2D(nb_filter3, (1, 1), name=conv_name_base + '2c',
                   use_bias=use_bias)(x)
-    x = BatchNorm(axis=3, name=bn_name_base + '2c')(x)
+    x = BatchNorm(axis=3, name=bn_name_base + '2c', trainable=batch_norm_trainable)(x)
 
     x = KL.Add()([x, input_tensor])
     x = KL.Activation('relu', name='res' + str(stage) + block + '_out')(x)
@@ -146,7 +153,7 @@ def identity_block(input_tensor, kernel_size, filters, stage, block,
 
 
 def conv_block(input_tensor, kernel_size, filters, stage, block,
-               strides=(2, 2), use_bias=True):
+               strides=(2, 2), use_bias=True, batch_norm_trainable=True):
     """conv_block is the block that has a conv layer at shortcut
     # Arguments
         input_tensor: input tensor
@@ -163,56 +170,68 @@ def conv_block(input_tensor, kernel_size, filters, stage, block,
 
     x = KL.Conv2D(nb_filter1, (1, 1), strides=strides,
                   name=conv_name_base + '2a', use_bias=use_bias)(input_tensor)
-    x = BatchNorm(axis=3, name=bn_name_base + '2a')(x)
+    x = BatchNorm(axis=3, name=bn_name_base + '2a', trainable=batch_norm_trainable)(x)
     x = KL.Activation('relu')(x)
 
     x = KL.Conv2D(nb_filter2, (kernel_size, kernel_size), padding='same',
                   name=conv_name_base + '2b', use_bias=use_bias)(x)
-    x = BatchNorm(axis=3, name=bn_name_base + '2b')(x)
+    x = BatchNorm(axis=3, name=bn_name_base + '2b', trainable=batch_norm_trainable)(x)
     x = KL.Activation('relu')(x)
 
     x = KL.Conv2D(nb_filter3, (1, 1), name=conv_name_base +
                   '2c', use_bias=use_bias)(x)
-    x = BatchNorm(axis=3, name=bn_name_base + '2c')(x)
+    x = BatchNorm(axis=3, name=bn_name_base + '2c', trainable=batch_norm_trainable)(x)
 
     shortcut = KL.Conv2D(nb_filter3, (1, 1), strides=strides,
                          name=conv_name_base + '1', use_bias=use_bias)(input_tensor)
-    shortcut = BatchNorm(axis=3, name=bn_name_base + '1')(shortcut)
+    shortcut = BatchNorm(axis=3, name=bn_name_base + '1', trainable=batch_norm_trainable)(shortcut)
 
     x = KL.Add()([x, shortcut])
     x = KL.Activation('relu', name='res' + str(stage) + block + '_out')(x)
     return x
 
 
-def resnet_graph(input_image, architecture, stage5=False):
+def resnet_graph(input_image, architecture, stage5=False, batch_norm_trainable=True):
     assert architecture in ["resnet35", "resnet50", "resnet101"]
     # Stage 1
     x = KL.ZeroPadding2D((3, 3))(input_image)
     x = KL.Conv2D(64, (7, 7), strides=(2, 2), name='conv1', use_bias=True)(x)
-    x = BatchNorm(axis=3, name='bn_conv1')(x)
+    x = BatchNorm(axis=3, name='bn_conv1', trainable=batch_norm_trainable)(x)
     x = KL.Activation('relu')(x)
     C1 = x = KL.MaxPooling2D((3, 3), strides=(2, 2), padding="same")(x)
     # Stage 2
-    x = conv_block(x, 3, [64, 64, 256], stage=2, block='a', strides=(1, 1))
-    x = identity_block(x, 3, [64, 64, 256], stage=2, block='b')
+    x = conv_block(x, 3, [64, 64, 256], stage=2, block='a', strides=(1, 1), 
+                                        batch_norm_trainable=batch_norm_trainable)
+    x = identity_block(x, 3, [64, 64, 256], stage=2, block='b', 
+                                        batch_norm_trainable=batch_norm_trainable)
     ##############
-    C2 = x = identity_block(x, 3, [64, 64, 256], stage=2, block='c')
+    C2 = x = identity_block(x, 3, [64, 64, 256], stage=2, block='c', 
+                                        batch_norm_trainable=batch_norm_trainable)
     # Stage 3
-    x = conv_block(x, 3, [128, 128, 512], stage=3, block='a')
-    x = identity_block(x, 3, [128, 128, 512], stage=3, block='b')
-    x = identity_block(x, 3, [128, 128, 512], stage=3, block='c')
-    C3 = x = identity_block(x, 3, [128, 128, 512], stage=3, block='d')
+    x = conv_block(x, 3, [128, 128, 512], stage=3, block='a', 
+                                        batch_norm_trainable=batch_norm_trainable)
+    x = identity_block(x, 3, [128, 128, 512], stage=3, block='b', 
+                                        batch_norm_trainable=batch_norm_trainable)
+    x = identity_block(x, 3, [128, 128, 512], stage=3, block='c', 
+                                        batch_norm_trainable=batch_norm_trainable)
+    C3 = x = identity_block(x, 3, [128, 128, 512], stage=3, block='d', 
+                                        batch_norm_trainable=batch_norm_trainable)
     # Stage 4
-    x = conv_block(x, 3, [256, 256, 1024], stage=4, block='a')
+    x = conv_block(x, 3, [256, 256, 1024], stage=4, block='a', 
+                                        batch_norm_trainable=batch_norm_trainable)
     block_count = {"resnet35" : 0, "resnet50": 5, "resnet101": 22}[architecture]
     for i in range(block_count):
-        x = identity_block(x, 3, [256, 256, 1024], stage=4, block=chr(98 + i))
+        x = identity_block(x, 3, [256, 256, 1024], stage=4, block=chr(98 + i), 
+                                        batch_norm_trainable=batch_norm_trainable)
     C4 = x
     # Stage 5
     if stage5:
-        x = conv_block(x, 3, [512, 512, 2048], stage=5, block='a')
-        x = identity_block(x, 3, [512, 512, 2048], stage=5, block='b')
-        C5 = x = identity_block(x, 3, [512, 512, 2048], stage=5, block='c')
+        x = conv_block(x, 3, [512, 512, 2048], stage=5, block='a', 
+                                        batch_norm_trainable=batch_norm_trainable)
+        x = identity_block(x, 3, [512, 512, 2048], stage=5, block='b', 
+                                        batch_norm_trainable=batch_norm_trainable)
+        C5 = x = identity_block(x, 3, [512, 512, 2048], stage=5, block='c', 
+                                        batch_norm_trainable=batch_norm_trainable)
     else:
         C5 = None
     return [C1, C2, C3, C4, C5]
@@ -288,6 +307,8 @@ def loss_graph(pred_obj_coords, segmentation_image, target_obj_coords, color):
     target_obj_coords = extract_elements_graph(target_obj_coords, indices, conv_image_shape)
 
     segmentation_mask = extract_elements_graph(segmentation_image, indices, conv_image_shape)
+
+    segmentation_mask = tf.Print(segmentation_mask, [segmentation_mask[0]], "Object coords", summarize=750000)
     segmentation_mask = tf.equal(segmentation_mask, color)
     segmentation_mask = tf.cast(tf.reduce_all(segmentation_mask, axis=3), tf.float32)
 
@@ -393,7 +414,9 @@ class FlowerPowerCNN:
 
         # Inputs of unkown dimensions
         input_image = KL.Input(shape=config.IMAGE_SHAPE.tolist(), name="input_image", dtype=tf.float32)
-        input_segmentation_image = KL.Input(shape=config.IMAGE_SHAPE.tolist(), name="input_segmentation_image", dtype=tf.float32)
+        input_segmentation_image = KL.Input(shape=config.IMAGE_SHAPE.tolist(), 
+                                            name="input_segmentation_image", 
+                                            dtype=tf.float32)
 
         # The color of the object model in the segmentation image
         color = K.constant(config.SEGMENTATION_COLOR, dtype=tf.float32)
@@ -401,7 +424,10 @@ class FlowerPowerCNN:
         # Build the shared convolutional layers.
         # Bottom-up Layers
         # Returns a list of the last layers of each stage, 5 in total.
-        C1, C2, C3, C4, C5 = resnet_graph(input_image, "resnet35", stage5=False)
+        C1, C2, C3, C4, C5 = resnet_graph(input_image, 
+                                          "resnet35", 
+                                          stage5=False, 
+                                          batch_norm_trainable=config.BATCH_NORM_TRAINABLE)
 
         """
         P3 = KL.Conv2D(256, (1, 1), name='fpn_c3p3')(C3)
@@ -423,7 +449,9 @@ class FlowerPowerCNN:
         if mode == "training":
 
             # Groundtruth object coordinates
-            input_gt_obj_coord_image = KL.Input(shape=config.IMAGE_SHAPE.tolist(), name="input_obj_coord_image", dtype=tf.float32)
+            input_gt_obj_coord_image = KL.Input(shape=config.IMAGE_SHAPE.tolist(), 
+                                                name="input_obj_coord_image", 
+                                                dtype=tf.float32)
 
             # Losses
             # Color cannot be passed directly as it is a constant
@@ -488,8 +516,7 @@ class FlowerPowerCNN:
         metrics. Then calls the Keras compile() function.
         """
         # Optimizer object
-        optimizer = keras.optimizers.SGD(lr=learning_rate, momentum=momentum,
-                                         clipnorm=5.0)
+        optimizer = keras.optimizers.Adam()
         # Add Losses
         # First, clear previously set losses to avoid duplication
         self.keras_model._losses = []
@@ -503,7 +530,7 @@ class FlowerPowerCNN:
 
         # Add L2 Regularization
         # Skip gamma and beta weights of batch normalization layers.
-        reg_losses = [keras.regularizers.l2(self.config.WEIGHT_DECAY)(w) / tf.cast(tf.size(w), tf.float32)
+        reg_losses = [keras.regularizers.l1(self.config.WEIGHT_DECAY)(w) / tf.cast(tf.size(w), tf.float32)
                       for w in self.keras_model.trainable_weights
                       if 'gamma' not in w.name and 'beta' not in w.name]
         self.keras_model.add_loss(tf.add_n(reg_losses))
@@ -556,7 +583,7 @@ class FlowerPowerCNN:
         self.checkpoint_path = self.checkpoint_path.replace(
             "*epoch*", "{epoch:04d}")
 
-    def train(self, train_dataset, val_dataset, config):
+    def train(self, train_dataset, val_dataset, config, verbose=0):
         
         learning_rate = config.LEARNING_RATE
         epochs = config.EPOCHS
@@ -612,12 +639,23 @@ class FlowerPowerCNN:
         self.set_trainable(layers)
         self.compile(learning_rate, self.config.LEARNING_MOMENTUM)
 
+        if verbose > 0:
+            run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+            run_metadata = tf.RunMetadata()
+
         self.keras_model.fit_generator(
             train_generator,
             initial_epoch=self.epoch,
             epochs=epochs,
             **fit_kwargs
         )
+
+        if verbose > 0:
+            timeline = timeline.Timeline(step_stats=run_metadata.step_stats)
+            chrome_trace = tl.generate_chrome_trace_format()
+            with open(os.path.join(config.OUTPUT_PATH, 'timeline.json'), 'w') as f:
+                f.write(chrome_trace)
+
         self.epoch = max(self.epoch, epochs)
 
 

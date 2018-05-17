@@ -61,6 +61,9 @@ def generate_data(images_path, image_extension, object_model_path, ground_truth_
 
                     # Render the segmentation image first, to crop all images to the segmentation mask
                     segmentation_rendering = renderings[renderer.RENDERING_MODE_SEGMENTATION]
+                    # On the borders of the object the segmentation color is not 255 but above 0
+                    segmentation_rendering_indices = segmentation_rendering > 0
+                    segmentation_rendering[segmentation_rendering_indices] = 255
                     cropped_segmentation = uti.crop_image_on_segmentation_color(segmentation_rendering, 
                                                                               segmentation_rendering,
                                                                               [255, 255, 255])
