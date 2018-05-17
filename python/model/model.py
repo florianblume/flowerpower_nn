@@ -317,7 +317,6 @@ def loss_graph(pred_obj_coords, segmentation_image, target_obj_coords, color):
     loss = tf.reduce_mean(squared_diff, axis=3)
     loss = tf.sqrt(loss)
     loss = tf.boolean_mask(loss, segmentation_mask)
-    loss = tf.Print(loss, [loss], "loss", summarize=10000)
     return loss
 
 def create_batch_array(batch_size, image_shape, with_obj_coords=True):
