@@ -70,7 +70,7 @@ class VisualizePredictionCallback(keras.callbacks.Callback):
         # Passing segmentation image as placeholder for the gt object coord image
         # - it is not actually needed for prediction but the model expects the third image
         # as it is build for training
-        prediction, loss = self.model.predict([np.array([image]), 
+        prediction, loss = self.model.keras_model.predict([np.array([image]), 
                                                np.array([segmentation_image]), 
                                                np.array([segmentation_image])
                                               ])
