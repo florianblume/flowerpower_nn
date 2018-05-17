@@ -308,16 +308,16 @@ def loss_graph(pred_obj_coords, segmentation_image, target_obj_coords, color):
 
     segmentation_mask = extract_elements_graph(segmentation_image, indices, conv_image_shape)
 
-    segmentation_mask = tf.Print(segmentation_mask, [segmentation_mask[0]], "Object coords", summarize=750000)
     segmentation_mask = tf.equal(segmentation_mask, color)
-    segmentation_mask = tf.cast(tf.reduce_all(segmentation_mask, axis=3), tf.float32)
+    segmentation_mask = tf.reduce_all(segmentation_mask, axis=3)
 
     # L1 loss: sum of squared element-wise differences
     #target_obj_coords = tf.image.resize_nearest_neighbor(target_obj_coords, [conv_image_shape[1], conv_image_shape[2]])
     squared_diff = tf.square(target_obj_coords - pred_obj_coords)
     loss = tf.reduce_mean(squared_diff, axis=3)
     loss = tf.sqrt(loss)
-    loss = loss * segmentation_mask
+    loss = tf.boolean_mask(loss, segmentation_mask)
+    loss = tf.Print(loss, [loss], "loss", summarize=10000)
     return loss
 
 def create_batch_array(batch_size, image_shape, with_obj_coords=True):
