@@ -38,16 +38,27 @@ def eulerAnglesToRotationMatrix(theta) :
  
     return R
 
-def ransac(prediction, cam_info):
+def ransac(prediction, imsize, cam_info):
     obj_coords = prediction['obj_coords']
+
     step_y = prediction['step_y']
     step_x = prediction['step_x']
-    indices = np.where(np.any(obj_coords != 0, axis=2))
+    # To prevent the error to distribute when simply multiplying by the step size
+    # we create the indices before rounding them
+    steps_y = np.arange(step_y, imsize[0], step_y)
+    steps_x = np.arange(step_x, imsize[1], step_x)
+    steps_y = steps_y.astype(np.int32)
+    steps_x = steps_x.astype(np.int32)
+
     object_points = []
     image_points = []
-    for index in range(len(indices[0])):
-        object_points.append(obj_coords[indices[0][index], indices[1][index]])
-        image_points.append([indices[0][index], indices[1][index]])
+    for i in range(len(obj_coords[0])):
+        for j in range(len(obj_coords[0][0])):
+            obj_coord = obj_coords[i][j]
+            if np.any(obj_coord != 0):
+                object_points.append(obj_coord)
+                image_points.append([steps_y[i], steps_x[j]])
+
     object_points = np.array(object_points).astype(np.float32)
     image_points = np.array(image_points).astype(np.float32)
     retval, rvec, tvec, inliers  = cv2.solvePnPRansac(object_points, 
@@ -73,19 +84,19 @@ def inference(config):
     output_file = config.OUTPUT_FILE
 
     assert os.path.exists(images_path), \
-    		"The images path {} does not exist.".format(images_path)
+            "The images path {} does not exist.".format(images_path)
     assert image_extension in ['png', 'jpg', 'jpeg'], \
-    		"Unkown image extension."
+            "Unkown image extension."
     assert os.path.exists(segmentation_images_path), \
-    		"The segmentation images path {} does not exist.".format(segmentation_images_path)
+            "The segmentation images path {} does not exist.".format(segmentation_images_path)
     assert segmentation_image_extension in ['png', 'jpg', 'jpeg'], \
-    		"Unkown segmentation image extension."
+            "Unkown segmentation image extension."
     assert os.path.exists(object_model_path), \
-    		"The object model file {} does not exist.".format(object_model_path)
+            "The object model file {} does not exist.".format(object_model_path)
     assert os.path.exists(cam_info_path), \
-    		"The camera info file {} does not exist.".format(cam_info_path)
+            "The camera info file {} does not exist.".format(cam_info_path)
     assert os.path.exists(weights_path), \
-    		"The weights file {} does not exist.".format(weights_path)
+            "The weights file {} does not exist.".format(weights_path)
 
     image_paths = util.get_files_at_path_of_extensions(images_path, image_extension)
     util.sort_list_by_num_in_string_entries(image_paths)
@@ -127,6 +138,8 @@ def inference(config):
     config.BATCH_SIZE = 1
     print("Running network inference.")
     network_model = model.FlowerPowerCNN('inference', config, output_path)
+    network_model.load_weights(weights_path, by_name=True)
+
     results = []
     # We only store the filename + extension
     object_model_path = os.path.basename(object_model_path)
@@ -137,9 +150,11 @@ def inference(config):
             key = image_paths[i]
             prediction = network_model.predict([images[i]], [cropped_segmentation_images[i]], verbose=1)
             # Network returns list as it is suitable for batching
-            pose = ransac(prediction[0], cam_info[key])
+            pose = ransac(prediction[0], images[i].shape, cam_info[key])
             rotation_matrix = eulerAnglesToRotationMatrix(pose[1])
             translation_vector = pose[2]
+            print("rotation {}".format(rotation_matrix))
+            print("translation {}".format(translation_vector))
             results.append({key : [{"R" : rotation_matrix.flatten().tolist(), 
                                     "t" : translation_vector.flatten().tolist(), 
                                     "bb" : bbs[i].flatten().tolist(), 

@@ -429,10 +429,14 @@ class FlowerPowerCNN:
         # Build the shared convolutional layers.
         # Bottom-up Layers
         # Returns a list of the last layers of each stage, 5 in total.
+        batch_norm_trainable = True
+        if mode == "training":
+            batch_norm_trainable = config.BATCH_NORM_TRAINABLE
+
         C1, C2, C3, C4, C5 = resnet_graph(input_image, 
                                           "resnet35", 
                                           stage5=False, 
-                                          batch_norm_trainable=config.BATCH_NORM_TRAINABLE)
+                                          batch_norm_trainable=batch_norm_trainable)
 
         """
         P3 = KL.Conv2D(256, (1, 1), name='fpn_c3p3')(C3)
