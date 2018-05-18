@@ -643,7 +643,7 @@ class FlowerPowerCNN:
                 log("\nStarting at epoch {}. LR={}\n".format(self.epoch, current_learning_rate))
                 log("Checkpoint Path: {}".format(self.checkpoint_path))
             else:
-                log("\nContinuing at epoch {}. LR={}\n".format(self.epoch, current_learning_rate))
+                log("\nContinuing run {} at epoch {}. LR={}\n".format(index + 1, self.epoch, current_learning_rate))
 
 
             if current_layers in layer_regex.keys():
@@ -840,9 +840,3 @@ class FlowerPowerCNN:
         for k, v in outputs_np.items():
             log(k, v)
         return outputs_np
-
-    def unmold_detection(pred_obj_coords, segmentation_image):
-        #Depending on the size of the predicted object coordinates we need to either
-        #  * set only every i-th pixel
-        #  * resize the image to its original ratio
-        pass
