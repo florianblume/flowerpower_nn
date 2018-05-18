@@ -76,9 +76,6 @@ class TrainingConfig(config.Config):
     # object coordinate images before training
     GT_PATH = ""
 
-    # The ration of training images to validation images
-    TRAIN_VAL_RATIO = 0.7
-
     # The path where the network can create necessary data
     # This is not the log folder where the network will store
     # its weights, etc, but only the rendered images etc.
@@ -86,6 +83,13 @@ class TrainingConfig(config.Config):
     # generate data through the REGENERATE_DATA option, the
     # data will be loaded from there.
     DATA_PATH = ""
+
+    # The file which contains the image filenames that will be used for training.
+    # The images have to be present in the DATA_PATH/images folder.
+    TRAIN_FILE = ""
+
+    # Analogously, this file contains the filenames to use for validation.
+    VAL_FILE = ""
 
     # Indicates whether the rendered data is to be updated
     # before training

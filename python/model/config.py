@@ -29,6 +29,9 @@ class Config:
     # Maximum size of the images
     IMAGE_DIM = 300
 
+    # The name of the model to use
+    MODEL = ""
+
     def __init__(self):
         """Set values of computed attributes."""
         # Effective batch size

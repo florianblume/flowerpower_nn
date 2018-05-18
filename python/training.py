@@ -3,6 +3,7 @@ import shutil
 import json
 import cv2
 import numpy as np
+import importlib
 from random import shuffle
 
 import util.util as util
@@ -12,7 +13,8 @@ import tifffile as tiff
 import matplotlib.pyplot as plt
 
 from model import dataset
-from model import model
+# Model will be imported based on the one requested in the config
+#from model import model
 from model import training_config
 
 OBJ_COORD_FILE_EXTENSION = "_obj_coordinates.tiff"
@@ -139,27 +141,35 @@ def train(config):
     obj_coordinate_renderings = util.get_files_at_path_of_extensions(temp_path_obj_coord_images, ['tiff'])
     util.sort_list_by_num_in_string_entries(obj_coordinate_renderings)
 
+    print("Populating datasets.")
+
     train_dataset = dataset.Dataset()
     val_dataset = dataset.Dataset()
 
-    indices = np.arange(len(images))
-    shuffle(indices)
-    train_indices_length = int(len(indices) * config.TRAIN_VAL_RATIO)
+    # Open the json files that hold the filenames for the respective datasets
+    with open(config.TRAIN_FILE, 'r') as train_file, open(config.VAL_FILE, 'r') as val_file:
+        train_filenames = json.load(train_file)
+        val_filenames = json.load(val_file)
+        # Fill training dict
+        for i, image in enumerate(images):
+            segmentation_image = segmentation_renderings[i]
+            object_coordinate_image = obj_coordinate_renderings[i]
+            # Check both cases, it might be that the image is not to be added at all
+            if image in train_filenames:
+                train_dataset.add_training_example(
+                        os.path.join(temp_path_images, image),
+                        os.path.join(temp_path_segmentation_images, segmentation_image),
+                        os.path.join(temp_path_obj_coord_images, object_coordinate_image))
+            elif image in val_filenames:
+                val_dataset.add_training_example(
+                        os.path.join(temp_path_images, image),
+                        os.path.join(temp_path_segmentation_images, segmentation_image),
+                        os.path.join(temp_path_obj_coord_images, object_coordinate_image))
 
-    print("Creating datasets.")
+    print("Added {} images for training and {} images for validation.".format(train_dataset.size(), val_dataset.size()))
 
-    for i in range(train_indices_length):
-        train_index = indices[i]
-        train_dataset.add_training_example(os.path.join(temp_path_images, images[train_index]),
-                                           os.path.join(temp_path_segmentation_images, segmentation_renderings[train_index]),
-                                           os.path.join(temp_path_obj_coord_images, obj_coordinate_renderings[train_index]))
-
-    for i in range(train_indices_length, len(indices)):
-        val_index = indices[i]
-        val_dataset.add_training_example(os.path.join(temp_path_images, images[val_index]),
-                                           os.path.join(temp_path_segmentation_images, segmentation_renderings[val_index]),
-                                           os.path.join(temp_path_obj_coord_images, obj_coordinate_renderings[val_index]))
-
+    # Here we import the request model
+    model = importlib.import_module("model." + config.MODEL + ".model")
     network_model = model.FlowerPowerCNN('training', config, output_path)
     if weights_path != "":
         network_model.load_weights(weights_path, config.LAYERS_TO_EXCLUDE_FROM_WEIGHT_LOADING)

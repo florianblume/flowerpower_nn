@@ -16,7 +16,7 @@ import keras.initializers as KI
 import keras.engine as KE
 import keras.models as KM
 
-from . import util
+from .. import util
 
 # Requires TensorFlow 1.3+ and Keras 2.0.8+.
 from distutils.version import LooseVersion
@@ -302,13 +302,19 @@ def loss_graph(pred_obj_coords, segmentation_image, target_obj_coords, color):
     original_image_shape = tf.shape(target_obj_coords)
     conv_image_shape = tf.shape(pred_obj_coords)
 
+    # Here we compute the relevant indices, e.g. if the output image is 1/8th of the original
+    # input image, we use only every 8-th pixel horizontally and vertically. The code takes
+    # care of the output image's size not being a divisor of the input image's.
     indices = compute_index_matrix_graph(original_image_shape, conv_image_shape)
 
+    # Extracts the relevant indices (e.g. every 8-th pixel because the output image is smalle
+    # than the input image) and reshapes the extraction to a suitable format.
     target_obj_coords = extract_elements_graph(target_obj_coords, indices, conv_image_shape)
 
     segmentation_mask = extract_elements_graph(segmentation_image, indices, conv_image_shape)
 
     segmentation_mask = tf.equal(segmentation_mask, color)
+    # We have a matrix of bool values of which indices to use after this step
     segmentation_mask = tf.reduce_all(segmentation_mask, axis=3)
 
     # L1 loss: sum of squared element-wise differences
@@ -643,7 +649,7 @@ class FlowerPowerCNN:
                 log("\nStarting at epoch {}. LR={}\n".format(self.epoch, current_learning_rate))
                 log("Checkpoint Path: {}".format(self.checkpoint_path))
             else:
-                log("\nContinuing at epoch {}. LR={}\n".format(self.epoch, current_learning_rate))
+                log("\nContinuing run {} at epoch {}. LR={}\n".format(index + 1, self.epoch, current_learning_rate))
 
 
             if current_layers in layer_regex.keys():
@@ -655,7 +661,7 @@ class FlowerPowerCNN:
             if verbose > 0:
                 run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
                 run_metadata = tf.RunMetadata()
-
+                
             self.keras_model.fit_generator(
                 train_generator,
                 initial_epoch=self.epoch,
