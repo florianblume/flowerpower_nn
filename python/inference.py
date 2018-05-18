@@ -3,13 +3,15 @@ import shutil
 import json
 import cv2
 import math
+import importlib
 import numpy as np
 from random import randint
 
 import util.util as util
 
 from model import dataset
-from model import model
+# We load the model later dynamically based on what is requested in the config
+#from model import model
 from model import inference_config
 
 def eulerAnglesToRotationMatrix(theta) :
@@ -52,10 +54,12 @@ def ransac(prediction, imsize, cam_info):
 
     object_points = []
     image_points = []
-    for i in range(len(obj_coords[0])):
-        for j in range(len(obj_coords[0][0])):
+
+    for i in range(obj_coords.shape[0]):
+        for j in range(obj_coords.shape[1]):
             obj_coord = obj_coords[i][j]
             if np.any(obj_coord != 0):
+                # If all coords are 0, then we are outside of the segmentation mask
                 object_points.append(obj_coord)
                 image_points.append([steps_y[i], steps_x[j]])
 
@@ -64,7 +68,8 @@ def ransac(prediction, imsize, cam_info):
     retval, rvec, tvec, inliers  = cv2.solvePnPRansac(object_points, 
                               image_points, 
                               np.array(cam_info['K']).reshape(3, 3), 
-                              np.zeros(4)
+                              None,
+                              iterationsCount=1000
     )
     return retval, rvec, tvec
 
@@ -137,6 +142,8 @@ def inference(config):
     # No support for batching yet
     config.BATCH_SIZE = 1
     print("Running network inference.")
+    # Here we import the request model
+    model = importlib.import_module("model." + config.MODEL + ".model")
     network_model = model.FlowerPowerCNN('inference', config, output_path)
     network_model.load_weights(weights_path, by_name=True)
 

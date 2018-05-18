@@ -172,7 +172,7 @@ def train(config):
     model = importlib.import_module("model." + config.MODEL + ".model")
     network_model = model.FlowerPowerCNN('training', config, output_path)
     if weights_path != "":
-        network_model.load_weights(weights_path, config.LAYERS_TO_EXCLUDE_FROM_WEIGHT_LOADING)
+        network_model.load_weights(weights_path, by_name=True, config.LAYERS_TO_EXCLUDE_FROM_WEIGHT_LOADING)
 
     print("Starting training.")
     network_model.train(train_dataset, val_dataset, config)

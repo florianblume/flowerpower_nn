@@ -58,7 +58,7 @@ class VisualizePredictionCallback(keras.callbacks.Callback):
         if not os.path.exists(output_path):
             os.makedirs(output_path)
 
-        file_path = os.path.join(output_path, "{}_epoch_{}.tiff".format(self.image_name, epoch))
+        file_path = os.path.join(output_path, "epoch_{}_image_{}.tiff".format(epoch, self.image_name))
 
         print("Performing sample prediction with model of epoch {}. Result stored at {}.".format(epoch, file_path))
 
