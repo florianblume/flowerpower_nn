@@ -846,9 +846,3 @@ class FlowerPowerCNN:
         for k, v in outputs_np.items():
             log(k, v)
         return outputs_np
-
-    def unmold_detection(pred_obj_coords, segmentation_image):
-        #Depending on the size of the predicted object coordinates we need to either
-        #  * set only every i-th pixel
-        #  * resize the image to its original ratio
-        pass
