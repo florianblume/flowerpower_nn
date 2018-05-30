@@ -14,65 +14,6 @@ from model import dataset
 #from model import model
 from model import inference_config
 
-def eulerAnglesToRotationMatrix(theta) :
-
-    ### From https://www.learnopencv.com/rotation-matrix-to-euler-angles/
-     
-    R_x = np.array([[1,         0,                  0                   ],
-                    [0,         math.cos(theta[0]), -math.sin(theta[0]) ],
-                    [0,         math.sin(theta[0]), math.cos(theta[0])  ]
-                    ])
-         
-         
-                     
-    R_y = np.array([[math.cos(theta[1]),    0,      math.sin(theta[1])  ],
-                    [0,                     1,      0                   ],
-                    [-math.sin(theta[1]),   0,      math.cos(theta[1])  ]
-                    ])
-                 
-    R_z = np.array([[math.cos(theta[2]),    -math.sin(theta[2]),    0],
-                    [math.sin(theta[2]),    math.cos(theta[2]),     0],
-                    [0,                     0,                      1]
-                    ])
-                     
-                     
-    R = np.dot(R_z, np.dot( R_y, R_x ))
- 
-    return R
-
-def ransac(prediction, imsize, cam_info):
-    obj_coords = prediction['obj_coords']
-
-    step_y = prediction['step_y']
-    step_x = prediction['step_x']
-    # To prevent the error to distribute when simply multiplying by the step size
-    # we create the indices before rounding them
-    steps_y = np.arange(step_y, imsize[0], step_y)
-    steps_x = np.arange(step_x, imsize[1], step_x)
-    steps_y = steps_y.astype(np.int32)
-    steps_x = steps_x.astype(np.int32)
-
-    object_points = []
-    image_points = []
-
-    for i in range(obj_coords.shape[0]):
-        for j in range(obj_coords.shape[1]):
-            obj_coord = obj_coords[i][j]
-            if np.any(obj_coord != 0):
-                # If all coords are 0, then we are outside of the segmentation mask
-                object_points.append(obj_coord)
-                image_points.append([steps_y[i], steps_x[j]])
-
-    object_points = np.array(object_points).astype(np.float32)
-    image_points = np.array(image_points).astype(np.float32)
-    retval, rvec, tvec, inliers  = cv2.solvePnPRansac(object_points, 
-                              image_points, 
-                              np.array(cam_info['K']).reshape(3, 3), 
-                              None,
-                              iterationsCount=1000
-    )
-    return retval, rvec, tvec
-
 def inference(config):
 
     images_path = config.IMAGES_PATH
@@ -81,12 +22,10 @@ def inference(config):
     segmentation_image_extension = config.SEGMENTATION_IMAGE_EXTENSION
     segmentation_color = config.SEGMENTATION_COLOR
     object_model_path = config.OBJECT_MODEL_PATH 
-    cam_info_path = config.CAM_INFO_PATH 
     weights_path = config.WEIGHTS_PATH 
     batch_size = config.BATCH_SIZE
     limit = config.LIMIT
     output_path = config.OUTPUT_PATH
-    output_file = config.OUTPUT_FILE
 
     assert os.path.exists(images_path), \
             "The images path {} does not exist.".format(images_path)
@@ -98,8 +37,6 @@ def inference(config):
             "Unkown segmentation image extension."
     assert os.path.exists(object_model_path), \
             "The object model file {} does not exist.".format(object_model_path)
-    assert os.path.exists(cam_info_path), \
-            "The camera info file {} does not exist.".format(cam_info_path)
     assert os.path.exists(weights_path), \
             "The weights file {} does not exist.".format(weights_path)
 
@@ -117,7 +54,7 @@ def inference(config):
     print("Preparing data.")
 
     if limit == 0:
-        limit = len(images_paths)
+        limit = len(image_paths)
 
         # TODO: Support file name list
 
@@ -139,8 +76,6 @@ def inference(config):
     # Otherwise datatype is int64 which is not JSON serializable
     bbs = np.array(bbs).astype(np.int32)
 
-    # No support for batching yet
-    config.BATCH_SIZE = 1
     print("Running network inference.")
     # Here we import the request model
     model = importlib.import_module("model." + config.MODEL + ".model")
@@ -151,25 +86,29 @@ def inference(config):
     # We only store the filename + extension
     object_model_path = os.path.basename(object_model_path)
 
-    with open(cam_info_path, "r") as cam_info_file:
-        cam_info = json.load(cam_info_file)
-        for i in range(len(images)):
-            key = image_paths[i]
-            prediction = network_model.predict([images[i]], [cropped_segmentation_images[i]], verbose=1)
-            # Network returns list as it is suitable for batching
-            pose = ransac(prediction[0], images[i].shape, cam_info[key])
-            rotation_matrix = eulerAnglesToRotationMatrix(pose[1])
-            translation_vector = pose[2]
-            print("rotation {}".format(rotation_matrix))
-            print("translation {}".format(translation_vector))
-            results.append({key : [{"R" : rotation_matrix.flatten().tolist(), 
-                                    "t" : translation_vector.flatten().tolist(), 
-                                    "bb" : bbs[i].flatten().tolist(), 
-                                    "obj" : object_model_path}]})
+    current_batch = 0
+    batch_size = min(batch_size, len(images))
+    # TODO: Check if it is necessary for the network to know the batch size...
+    #       It seems that batch size is just a sanity check
+    # Set batch size for the network to the current batch size
+    network_model.config.BATCH_SIZE = batch_size
 
-    print("Writing results to {}".format(output_file))
-    with open(output_file, "w") as json_file:
-        json.dump(results, json_file)
+    while current_batch < len(images):
+        # Account for that the number of images might not be divisible by the batch size
+        batch_size = min(batch_size, len(images) - current_batch)
+        batch_start = current_batch
+        current_batch += batch_size
+        batch_end = current_batch
+        network_model.config.BATCH_SIZE = batch_size
+        predictions = network_model.predict(images[batch_start:batch_end], cropped_segmentation_images[batch_start:batch_end], verbose=1)
+        for index in range(len(predictions)):
+            results.append({    "prediction" : predictions[index], 
+                                "image" : image_paths[batch_start + index], 
+                                "segmentation_image" : segmentation_image_paths[batch_start + index],
+                                "object_model" : object_model_path
+                            })
+
+    return results
 
 if __name__ == '__main__':
     import argparse

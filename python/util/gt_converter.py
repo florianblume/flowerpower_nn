@@ -20,7 +20,6 @@ def convert_tless_gt(gt_path, images_path, image_extension, object_models_path, 
 
         object_model_filenames = util.get_files_at_path_of_extensions(object_models_path, ['ply', 'obj'])
         util.sort_list_by_num_in_string_entries(object_model_filenames)
-
         index = 0
         for filename in image_filenames:
             # GT entry is stored as dictionary in list for an unkown reason
@@ -31,7 +30,7 @@ def convert_tless_gt(gt_path, images_path, image_extension, object_models_path, 
                 # IDs of object models in T-Less are 1 based
                 obj_id -= 1
                 obj_filename = object_model_filenames[obj_id]
-                converted[filename].append({'R' : gt['cam_R_m2c'].tolist(), 't' : gt['cam_t_m2c'].flatten().tolist(), 
+                converted[filename].append({'R' : gt['cam_R_m2c'].flatten().tolist(), 't' : gt['cam_t_m2c'].flatten().tolist(), 
                                             'bb' : gt['obj_bb'], 'obj' : obj_filename})
             index += 1
 
