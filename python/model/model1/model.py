@@ -746,9 +746,10 @@ class FlowerPowerCNN:
             # We need to store the scaling and padding as well, to retrieve the
             # actual coordinates after inference
             image, image_scale, image_padding = util.resize_image(images[index], self.config.IMAGE_SHAPE[:2])
-            prepared_images.append({"image" : image,
-                                    "scale" : image_scale,
-                                    "padding" : image_padding})
+            prepared_images.append({"image"     : image,
+                                    "raw_image" : images[index],
+                                    "scale"     : image_scale,
+                                    "padding"   : image_padding})
             _prepared_images.append(image)
             segmentation_image, segmentation_image_scale, segmentation_image_padding = \
                                 util.resize_image(segmentation_images[index], self.config.IMAGE_SHAPE[:2])
@@ -767,21 +768,24 @@ class FlowerPowerCNN:
             print("Processing inference results.")
         for i, prediction in enumerate(predictions):
             prepared_image = prepared_images[i]
+            scaled_padded_image = prepared_image["image"]
 
-            # To be able to tell which pixel in the prediction corresponds to
-            # which pixel in the original image - predictions are smaller than
-            # the original image meaning that only e.g. every 10-th pixel in
-            # the input image is predicted
-
-            step_y = prepared_image["image"].shape[0] / float(prediction.shape[0])
-            step_x = prepared_image["image"].shape[1] / float(prediction.shape[1])
+            # The aspect ration to determine the size of the padding in the prediction
+            raw_step_y = scaled_padded_image.shape[0] / float(prediction.shape[0])
+            raw_step_x = scaled_padded_image.shape[1] / float(prediction.shape[1])
             scale = prepared_image["scale"]
 
+            # Calculating the step size in vertical and horizontal direction. We do this
+            # because the network' output is smaller than the input, which means (due to
+            # step sizes, kernel sizes etc) that e.g. ever 8-th pixel is being predicted
+            # in the original image
             v_padding, h_padding, _ = prepared_image["padding"]
-            v_padding = np.asarray(v_padding).astype(np.float32) / step_y
-            h_padding = np.asarray(h_padding).astype(np.float32) / step_x
+
+            v_padding = np.asarray(v_padding).astype(np.float32) / raw_step_y
+            h_padding = np.asarray(h_padding).astype(np.float32) / raw_step_x
             v_padding = v_padding.astype(np.int32)
             h_padding = h_padding.astype(np.int32)
+
             # The padding does not store where it begins index-wise but the width of the padding
             # Of course we only need to take care of the right and bottom end, the left and top
             # padding function as offset where the actual image starts
@@ -796,10 +800,14 @@ class FlowerPowerCNN:
             resized_prediction = cv2.resize(cropped_prediction, 
                                             new_size, 
                                             interpolation = cv2.INTER_CUBIC)
+            raw_image = prepared_image["raw_image"]
+            step_y = raw_image.shape[0] / float(resized_prediction.shape[0])
+            step_x = raw_image.shape[1] / float(resized_prediction.shape[1])
 
             # Restrict the prediction to the segmentation pixels
             # Use the un-resized segmentation image, we do not need up- and then down-scaling
             # that increases the error
+            # TODO: replace with picking indices instead of resizing
             resized_segmentation_image = cv2.resize(segmentation_images[i], 
                                             (resized_prediction.shape[1], resized_prediction.shape[0]), 
                                             interpolation = cv2.INTER_NEAREST)

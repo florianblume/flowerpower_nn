@@ -105,7 +105,8 @@ def inference(config):
             results.append({    "prediction" : predictions[index], 
                                 "image" : image_paths[batch_start + index], 
                                 "segmentation_image" : segmentation_image_paths[batch_start + index],
-                                "object_model" : object_model_path
+                                "object_model" : object_model_path,
+                                "bb" : bbs[batch_start + index]
                             })
 
     return results

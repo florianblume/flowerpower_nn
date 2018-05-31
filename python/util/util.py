@@ -10,6 +10,24 @@ def merge_gts(gt1, gt2):
     # TODO: merge two ground truth files
     pass
 
+def create_index_array_from_step_sizes(step_y, end_y, max_y, step_x, end_x, max_x):
+
+    steps_y = np.arange(step_y / 2, end_y, step_y)
+    steps_x = np.arange(step_x / 2, end_x, step_x)
+
+    steps_y = steps_y.astype(np.int32)
+    steps_x = steps_x.astype(np.int32)
+
+    # Numpy sometimes INCLUDES the limit in np.arange for floating point values, i.e.
+    # we have to check whether we exceed the image's limits
+    steps_y_last = len(steps_y) - 1
+    steps_y[steps_y_last] = min(steps_y[steps_y_last], max_y)
+    steps_x_last = len(steps_x) - 1
+    steps_x[steps_x_last] = min(steps_x[steps_x_last], max_x)
+
+    return steps_y, steps_x
+
+
 def shrink_image_with_step_size(image, target_shape):
     """ With this function an image can be shrinked to a certain target size
     with out interpolation. Instead the pixels are extracted at regular intervals
@@ -18,19 +36,12 @@ def shrink_image_with_step_size(image, target_shape):
     step_y = image.shape[0] / float(target_shape[0])
     step_x = image.shape[1] / float(target_shape[1])
 
-    steps_y = np.arange(step_y / 2, image.shape[0], step_y)
-    steps_x = np.arange(step_x / 2, image.shape[1], step_x)
-
-    steps_y = steps_y.astype(np.int32)
-    steps_x = steps_x.astype(np.int32)
-    shrunk_image = np.zeros([target_shape[0], target_shape[1], 3], dtype=image.dtype)
-
-    # Numpy sometimes INCLUDES the limit in np.arange for floating point values, i.e.
-    # we have to check whether we exceed the image's limits
-    steps_y_last = len(steps_y) - 1
-    steps_y[steps_y_last] = min(steps_y[steps_y_last], len(image) - 1)
-    steps_x_last = len(steps_x) - 1
-    steps_x[steps_x_last] = min(steps_x[steps_x_last], len(image[0]) - 1)
+    steps_y, steps_x = create_index_array_from_step_sizes(step_y, 
+                                                          image.shape[0],
+                                                          image.shape[0] - 1,
+                                                          step_x, 
+                                                          image.shape[1],
+                                                          image.shape[1] - 1)
 
     num_steps_y = len(steps_y)
 
@@ -38,8 +49,8 @@ def shrink_image_with_step_size(image, target_shape):
     steps_y = np.repeat(steps_y, len(steps_x))
     steps_x = np.tile(steps_x, num_steps_y)
 
+    shrunk_image = np.zeros([target_shape[0], target_shape[1], 3], dtype=image.dtype)
     shrunk_image = image[steps_y, steps_x]
-
     shrunk_image = shrunk_image.reshape(target_shape)
 
     return shrunk_image
@@ -50,10 +61,15 @@ def pair_object_coords_with_index(image, original_im_size, step_y, step_x):
     thus the index of the final detection does not correspond with the index
     in the source image. 
     """
-    steps_y = np.arange(step_y, original_im_size[0], step_y)
-    steps_x = np.arange(step_x, original_im_size[1], step_x)
-    steps_y = steps_y.astype(np.int32)
-    steps_x = steps_x.astype(np.int32)
+    steps_y, steps_x = create_index_array_from_step_sizes(step_y, 
+                                                          original_im_size[0],
+                                                          original_im_size[0] - 1,
+                                                          step_x,  
+                                                          original_im_size[1],
+                                                          original_im_size[1] - 1)
+
+    print(steps_y)
+    print(steps_x)
 
     object_points = []
     image_points = []
@@ -65,6 +81,7 @@ def pair_object_coords_with_index(image, original_im_size, step_y, step_x):
                 # If all coords are 0, then we are outside of the segmentation mask
                 object_points.append(obj_coord)
                 image_points.append([steps_y[i], steps_x[j]])
+                print("{} ({}) {}".format((steps_y[i], steps_x[j]), (i, j), obj_coord))
 
     object_points = np.array(object_points).astype(np.float32)
     image_points = np.array(image_points).astype(np.float32)
