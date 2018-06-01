@@ -24,11 +24,11 @@ app.use_app('PyGlet') # Set backend
 _segmentation_vertex_code = """
 uniform mat4 u_mvp;
 attribute vec3 a_position;
-attribute vec4 a_color;
+attribute vec3 a_color;
 varying vec4 v_color;
 void main() {
     gl_Position = u_mvp * vec4(a_position, 1.0);
-    v_color = vec4(1.0, 1.0, 1.0, 1.0);
+    v_color = vec4(a_color, 1.0);
 }
 """
 
@@ -213,7 +213,8 @@ def _compute_calib_proj(K, x0, y0, w, h, nc, fc, window_coords='y_down'):
 class _Canvas(app.Canvas):
     def __init__(self, vertices, faces, size, K, R, t, clip_near, clip_far,
                  bg_color=(0.0, 0.0, 0.0, 0.0), ambient_weight=0.1,
-                 render_rgb=True, render_depth=True, render_obj_coords=True, render_segmentation=True):
+                 render_rgb=True, render_depth=True, render_obj_coords=True, render_segmentation=True,
+                 segmentation_color=None):
         """
         mode is from ['rgb', 'depth', 'rgb+depth']
         """
@@ -235,6 +236,7 @@ class _Canvas(app.Canvas):
         self.obj_coords = np.array([])
         self.obj_coords_rep = np.array([])
         self.segmentation = np.array([])
+        self.segmentation_color = segmentation_color
 
         # Model matrix
         self.mat_model = np.eye(4, dtype=np.float32) # From object space to world space
@@ -353,6 +355,7 @@ class _Canvas(app.Canvas):
         program = gloo.Program(_segmentation_vertex_code, _segmentation_fragment_code)
         program.bind(self.vertex_buffer)
         program['u_mvp'] = _compute_model_view_proj(self.mat_model, self.mat_view, self.mat_proj)
+        program['a_color'] = self.segmentation_color
 
         # Texture where we render the scene
         render_tex = gloo.Texture2D(shape=self.shape + (4,))
@@ -391,7 +394,8 @@ class _Canvas(app.Canvas):
 # Ref: https://github.com/vispy/vispy/blob/master/examples/demo/gloo/offscreen.py
 def render(model, im_size, K, R, t, clip_near=100, clip_far=2000,
            surf_color=None, bg_color=(0.0, 0.0, 0.0, 0.0),
-           ambient_weight=0.1, mode=RENDERING_MODES):
+           ambient_weight=0.1, mode=RENDERING_MODES,
+           segmentation_color=None):
 
     # Process input data
     #---------------------------------------------------------------------------
@@ -422,7 +426,8 @@ def render(model, im_size, K, R, t, clip_near=100, clip_far=2000,
     render_obj_coords = RENDERING_MODE_OBJ_COORDS in mode
     render_segmentation = RENDERING_MODE_SEGMENTATION in mode
     c = _Canvas(vertices, model['faces'], im_size, K, R, t, clip_near, clip_far,
-                bg_color, ambient_weight, render_rgb, render_depth, render_obj_coords, render_segmentation)
+                bg_color, ambient_weight, render_rgb, render_depth, render_obj_coords, render_segmentation,
+                segmentation_color)
     app.run()
 
     #---------------------------------------------------------------------------

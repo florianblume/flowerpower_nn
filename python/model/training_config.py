@@ -91,10 +91,6 @@ class TrainingConfig(config.Config):
     # Analogously, this file contains the filenames to use for validation.
     VAL_FILE = ""
 
-    # Indicates whether the rendered data is to be updated
-    # before training
-    REGENERATE_DATA = False
-
     # The path where the network can create necessary data
     # This is not the log folder where the network will store
     # its weights, etc, but only the rendered images etc

@@ -24,7 +24,7 @@ def inference(config):
     object_model_path = config.OBJECT_MODEL_PATH 
     weights_path = config.WEIGHTS_PATH 
     batch_size = config.BATCH_SIZE
-    limit = config.LIMIT
+    image_list = config.IMAGE_LIST
     output_path = config.OUTPUT_PATH
 
     assert os.path.exists(images_path), \
@@ -53,13 +53,14 @@ def inference(config):
 
     print("Preparing data.")
 
-    if limit == 0:
-        limit = len(image_paths)
-
         # TODO: Support file name list
 
     # Prepare data, i.e. crop images to the segmentation mask
-    for index in range(min(len(image_paths), limit)):
+    with open(image_list, "r") as loaded_image_list:
+        images_to_process = json.load(loaded_image_list)
+        image_paths = [image_path for image_path in image_paths if image_path in images_to_process]
+
+    for index in range(len(image_paths)):
         image_path = image_paths[index]
         image = cv2.imread(os.path.join(images_path, image_path))
         segmentation_image_path = segmentation_image_paths[index]

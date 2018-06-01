@@ -30,7 +30,7 @@ def visualize_errors(images1_path, images2_path, output_path, output_path_float=
         max_b = np.amax(diff[:,:,2])
         diff = (diff[:,:] / [max_r, max_g, max_b]) * 255
         diff = diff.astype(np.int32)
-        cv2.imwrite(output_filename, diff)
+        #cv2.imwrite(output_filename, diff)
 
 if __name__ == '__main__':
     import argparse

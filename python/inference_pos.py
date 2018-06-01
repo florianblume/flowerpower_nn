@@ -38,7 +38,6 @@ def ransac(prediction, imsize, cam_info):
     step_x = prediction['step_x']
 
     image_points, object_points = util.pair_object_coords_with_index(obj_coords, imsize, step_y, step_x)
-
     retval, rvec, tvec, inliers  = cv2.solvePnPRansac(object_points, 
                               image_points, 
                               np.array(cam_info['K']).reshape(3, 3), 
@@ -61,9 +60,9 @@ def inference(config):
 
     with open(cam_info_path, "r") as cam_info_file:
         cam_info = json.load(cam_info_file)
+        print("Predicting poses.")
         for result in results:
             key = result["image"]
-            print(key)
             prediction = result["prediction"]
             image = cv2.imread(os.path.join(config.IMAGES_PATH, key))
             pose = ransac(prediction, image.shape, cam_info[key])

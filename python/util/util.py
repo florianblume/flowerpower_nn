@@ -68,9 +68,6 @@ def pair_object_coords_with_index(image, original_im_size, step_y, step_x):
                                                           original_im_size[1],
                                                           original_im_size[1] - 1)
 
-    print(steps_y)
-    print(steps_x)
-
     object_points = []
     image_points = []
 
@@ -81,7 +78,6 @@ def pair_object_coords_with_index(image, original_im_size, step_y, step_x):
                 # If all coords are 0, then we are outside of the segmentation mask
                 object_points.append(obj_coord)
                 image_points.append([steps_y[i], steps_x[j]])
-                print("{} ({}) {}".format((steps_y[i], steps_x[j]), (i, j), obj_coord))
 
     object_points = np.array(object_points).astype(np.float32)
     image_points = np.array(image_points).astype(np.float32)
@@ -100,7 +96,7 @@ def crop_image_on_segmentation_color(image, segmentation_mask, color, return_fra
     x_end = np.max(x_indices)
     cropped_image = image[y_start : y_end + 1, x_start : x_end + 1]
     if return_frame:
-        return cropped_image, (y_start, y_end + 1, x_start, x_end + 1)
+        return cropped_image, (y_start, x_start, y_end + 1, x_end + 1)
     else:
         return cropped_image
 
