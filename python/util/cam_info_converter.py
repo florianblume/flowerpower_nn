@@ -22,7 +22,7 @@ def convert_tless_cam_info(cam_info_path, images_path, image_extension, output_p
             converted_single = {'K' : info['cam_K'].flatten().tolist(), 
                                 'mode' : info['mode'], 
                                 'elev' : info['elev']}
-            if not info['cam_R_w2c'] is None:
+            if 'cam_R_w2c' in info:
                 # In this case we also have the rotation of the camera, which is provided for test images
                 converted_single['R'] = info['cam_R_w2c'].flatten().tolist()
                 converted_single['t'] = info['cam_t_w2c'].flatten().tolist()

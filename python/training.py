@@ -25,14 +25,12 @@ def train(config):
     image_extension = config.IMAGE_EXTENSION 
     object_model_path = config.OBJECT_MODEL_PATH 
     ground_truth_path = config.GT_PATH 
-    cam_info_path = config.CAM_INFO_PATH 
     data_path = config.DATA_PATH 
     weights_path = config.WEIGHTS_PATH 
     output_path = config.OUTPUT_PATH
 
     assert os.path.exists(object_model_path), "The object model file {} does not exist.".format(object_model_path)
     assert os.path.exists(ground_truth_path), "The ground-truth file {} does not exist.".format(ground_truth_path)
-    assert os.path.exists(cam_info_path), "The camera info file {} does not exist.".format(cam_info_path)
 
     if weights_path != "":
         assert os.path.exists(weights_path), "The weights file {} does not exist.".format(weights_path)

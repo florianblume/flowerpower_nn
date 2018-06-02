@@ -22,7 +22,6 @@ def convert_tless_gt(gt_path, images_path, image_extension, object_models_path, 
         util.sort_list_by_num_in_string_entries(object_model_filenames)
         index = 0
         for filename in image_filenames:
-            # GT entry is stored as dictionary in list for an unkown reason
             converted[filename] = []
             for gt_entry in range(len(yml_gt[index])):
                 gt = yml_gt[index][gt_entry]

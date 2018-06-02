@@ -289,7 +289,7 @@ def extract_elements_graph(image, indices, shape):
     image = tf.reshape(image, [shape[0], shape[1], shape[2], shape[3]])
     return image
 
-def loss_graph(pred_obj_coords, segmentation_image, target_obj_coords, color):
+def loss_graph(pred_obj_coords, segmentation_image, padding, target_obj_coords, color):
     """ Loss for the network.
 
     target_obj_coords: [batch, height, width, 3]. The ground-truth object coordinates.
@@ -300,6 +300,7 @@ def loss_graph(pred_obj_coords, segmentation_image, target_obj_coords, color):
     # in case that the output image is smaller than the input image
 
     original_image_shape = tf.shape(target_obj_coords)
+    
     conv_image_shape = tf.shape(pred_obj_coords)
 
     # Here we compute the relevant indices, e.g. if the output image is 1/8th of the original
@@ -355,11 +356,6 @@ def data_generator(dataset, config, shuffle=True, batch_size=1):
             if shuffle and image_index == 0:
                 np.random.shuffle(image_ids)
 
-            # Init batch arrays
-            if b == 0:
-                batch_images, batch_segmentation_images, batch_obj_coord_images =\
-                        create_batch_array(batch_size, config.IMAGE_SHAPE)
-
             # Get GT object coordinates and segmentation for image.
             image_id = image_ids[image_index]
 
@@ -368,21 +364,36 @@ def data_generator(dataset, config, shuffle=True, batch_size=1):
             segmentation_image = dataset.load_segmentation_image(image_id)
             obj_coord_image = dataset.load_obj_coord_image(image_id)
 
+            # Init batch arrays
+            if b == 0:
+                batch_images = np.zeros(
+                    (batch_size, image_shape[0], image_shape[1], 3), dtype=np.uint8)
+                batch_segmentation_images = np.zeros(
+                    (batch_size, image_shape[0], image_shape[1], 3), dtype=np.uint8)
+                # We also need to store the pads, as we do not pad the ground truth
+                batch_pads = np.zeros(
+                    (batch_size, 4), dtype=np.uint8)
+                batch_obj_coord_images = np.zeros(
+                    (batch_size, obj_coord_image.shape[0], obj_coord_image.shape[1], 3), dtype=np.float32)
+
             # The utility function also returns the scale and padding which we dont' need here
             # thus we only retrieve the first return value
-            image = util.resize_image(image, new_size)[0]
-            segmentation_image = util.resize_image(segmentation_image, new_size)[0]
-            obj_coord_image = util.resize_image(obj_coord_image, new_size)[0]
+            image, scale, padding = util.resize_and_pad_image(image, new_size)[0]
+            segmentation_image = util.resize_and_pad_image(segmentation_image, new_size)[0]
+            # We don't resize the object coordinates, as that would distort the information
+            obj_coord_image = obj_coord_image
 
             batch_images[b] = image
             batch_segmentation_images[b] = segmentation_image
+            # top, bottom, left, right padding
+            batch_pads[b] = [padding[0][0], padding[0][1], padding[1][0], padding[1][1]]
             batch_obj_coord_images[b] = obj_coord_image
 
             b += 1
 
             # Batch full?
             if b >= batch_size:
-                yield [batch_images, batch_segmentation_images, batch_obj_coord_images], []
+                yield [batch_images, batch_segmentation_images, batch_pads, batch_obj_coord_images], []
 
                 # start a new batch
                 b = 0
@@ -461,6 +472,9 @@ class FlowerPowerCNN:
             input_gt_obj_coord_image = KL.Input(shape=config.IMAGE_SHAPE.tolist(), 
                                                 name="input_obj_coord_image", 
                                                 dtype=tf.float32)
+            input_paddings = KL.Input(shape=[4],
+                                      name="input_paddings",
+                                      dtype=tf.int32)
 
             # Losses
             # Color cannot be passed directly as it is a constant
@@ -468,7 +482,7 @@ class FlowerPowerCNN:
                 [obj_coord_image, input_segmentation_image, input_gt_obj_coord_image])
 
             # Model
-            inputs = [input_image, input_segmentation_image, input_gt_obj_coord_image]
+            inputs = [input_image, input_segmentation_image, input_paddings, input_gt_obj_coord_image]
 
             outputs = [obj_coord_image, loss]
             model = KM.Model(inputs, outputs, name='flowerpower_cnn')

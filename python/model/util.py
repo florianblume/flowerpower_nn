@@ -1,7 +1,7 @@
 import scipy.misc
 import numpy as np
 
-def resize_image(image, shape):
+def resize_and_pad_image(image, shape):
     """
     Resizes an image keeping the aspect ratio and fills the remainder of the
     shape with zeros.
@@ -37,3 +37,5 @@ def resize_image(image, shape):
     padding = [(top_pad, bottom_pad), (left_pad, right_pad), (0, 0)]
     image = np.pad(image, padding, mode='constant', constant_values=0)
     return image, scale, padding
+
+def pad_image(image, shape):

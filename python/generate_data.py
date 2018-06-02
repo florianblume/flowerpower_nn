@@ -5,6 +5,7 @@ import cv2
 import numpy as np
 import importlib
 from random import shuffle
+from collections import OrderedDict
 
 import util.util as util
 import util.tless_inout as inout
@@ -41,10 +42,12 @@ def generate_data(images_path, image_extension, object_model_path, ground_truth_
         segmentations_output_path = os.path.join(output_path, "segmentations")
         obj_coords_output_path = os.path.join(output_path, "obj_coords")
 
-        gt_data = json.load(gt_data_file)
+        gt_data = OrderedDict(sorted(json.load(gt_data_file).items(), key=lambda t: t[0]))
         cam_info = json.load(cam_info_file)
-        cam_info_copy = json.load(cam_info_file)
+        cam_info_copy = dict()
+        cam_info_copy.update(cam_info)
         for image_filename in gt_data:
+            print("Processing file {}".format(image_filename))
             image_filename_without_extension = os.path.splitext(image_filename)[0]
             image_path = os.path.join(images_path, image_filename)
 
@@ -77,10 +80,11 @@ def generate_data(images_path, image_extension, object_model_path, ground_truth_
                     segmentation_rendering = renderings[renderer.RENDERING_MODE_SEGMENTATION]
                     # On the borders of the object the segmentation color is not 255 but above 0
                     segmentation_rendering_indices = segmentation_rendering > 0
+                    segmentation_rendering_indices = np.all(segmentation_rendering_indices == True, axis=2)
                     segmentation_rendering[segmentation_rendering_indices] = segmentation_color
                     # We need to write the crops into the new camera info file because the principal points 
                     # changes when we crop the image
-                    cropped_segmentation, crop_frame = uti.crop_image_on_segmentation_color(segmentation_rendering, 
+                    cropped_segmentation, crop_frame = util.crop_image_on_segmentation_color(segmentation_rendering, 
                                                                               segmentation_rendering,
                                                                               segmentation_color, return_frame=True)
                     segmentation_rendering_path = image_filename_without_extension + SEG_FILE_EXTENSION
@@ -90,7 +94,7 @@ def generate_data(images_path, image_extension, object_model_path, ground_truth_
                     # Render, crop and save object coordinates
                     object_coordinates_rendering = renderings[renderer.RENDERING_MODE_OBJ_COORDS].astype(np.float16)
 
-                    object_coordinates = uti.crop_image_on_segmentation_color(object_coordinates_rendering, 
+                    object_coordinates = util.crop_image_on_segmentation_color(object_coordinates_rendering, 
                                                                               segmentation_rendering,
                                                                               segmentation_color)
                     object_coordinates_rendering_path = image_filename_without_extension + OBJ_COORD_FILE_EXTENSION
@@ -98,49 +102,38 @@ def generate_data(images_path, image_extension, object_model_path, ground_truth_
                     tiff.imsave(object_coordinates_rendering_path, object_coordinates)
 
                     # Save the original image in a cropped version as well
-                    cropped_image = uti.crop_image_on_segmentation_color(image, 
+                    cropped_image = util.crop_image_on_segmentation_color(image, 
                                                                          segmentation_rendering,
                                                                          segmentation_color)
                     cropped_image_path = os.path.join(images_output_path, image_filename)
-                    cv2.imwrite(segmentation_rendering_path, cropped_image)
+                    cv2.imwrite(cropped_image_path, cropped_image)
 
                     # Update camera matrix
-                    K[0][2] = K[0][2] - crop_frame[0]
-                    K[1][2] = K[1][2] - crop_frame[1]
-                    image_cam_info['K'] = K
+                    # I.e. the principal point has to be adjusted by shifting it by the crop offset
+                    K[0][2] = K[0][2] - crop_frame[1]
+                    K[1][2] = K[1][2] - crop_frame[0]
+                    image_cam_info['K'] = K.flatten().tolist()
                     cam_info[image_filename] = image_cam_info
         json.dump(cam_info, cam_info_output_file)
 
 if __name__ == '__main__':
     import argparse
+    import json
 
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='This script provides functionality to train the FlowerPower network.')
-    parser.add_argument("--images_path",
+    parser.add_argument("--config",
                         required=True,
-                        help="The path to the images.")
-    parser.add_argument("--image_extension",
-                        required=True,
-                        help="The extension of the images.")
-    parser.add_argument("--object_model_path",
-                        required=True,
-                        help="The path to the object model.")
-    parser.add_argument("--ground_truth_path",
-                        required=True,
-                        help="The path to the ground truth file.")
-    parser.add_argument("--cam_info_path",
-                        required=True,
-                        help="The path to the camera info file.")
-    parser.add_argument("--segmentation_color",
-                        required=True,
-                        nargs='3',
-                        type=int,
-                        help="The color to use to render the segmentation image.")
-    parser.add_argument("--output_path",
-                        required=True,
-                        help="The path where to store the results \
-                        The folders 'images', segmentations' and \
-                        'obj_coords' will be created automatically.")
+                        help="The path to the generation config.")
     args = parser.parse_args()
-    generate_data(args.images_path, args.image_extension, args.object_model_path, 
-            args.ground_truth_path, args.cam_info_path, args.segmentation_color, args.output_path)
+    config_path = args.config
+    with open(config_path, 'r') as config_file:
+        config = json.load(config_file)
+        generate_data(config["IMAGES_PATH"], 
+                  config["IMAGE_EXTENSION"], 
+                  config["OBJECT_MODEL_PATH"],
+                  config["GROUND_TRUTH_PATH"],
+                  config["CAM_INFO_PATH"],
+                  config["SEGMENTATION_COLOR"],
+                  config["OUTPUT_PATH"]
+                  )
