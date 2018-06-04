@@ -29,6 +29,9 @@ def generate_data(images_path, image_extension, object_model_path, ground_truth_
     os.makedirs(os.path.join(output_path, "segmentations"))
     os.makedirs(os.path.join(output_path, "obj_coords"))
 
+    # To process only images that actually exist
+    existing_images = util.get_files_at_path_of_extensions(images_path, [image_extension])
+
     plt.ioff() # Turn interactive plotting off
 
     cam_info_output_path = os.path.join(output_path, "info.json")
@@ -44,9 +47,11 @@ def generate_data(images_path, image_extension, object_model_path, ground_truth_
 
         gt_data = OrderedDict(sorted(json.load(gt_data_file).items(), key=lambda t: t[0]))
         cam_info = json.load(cam_info_file)
-        cam_info_copy = dict()
-        cam_info_copy.update(cam_info)
+        new_cam_info = {}
         for image_filename in gt_data:
+            if not image_filename in existing_images:
+              continue
+
             print("Processing file {}".format(image_filename))
             image_filename_without_extension = os.path.splitext(image_filename)[0]
             image_path = os.path.join(images_path, image_filename)
@@ -113,8 +118,8 @@ def generate_data(images_path, image_extension, object_model_path, ground_truth_
                     K[0][2] = K[0][2] - crop_frame[1]
                     K[1][2] = K[1][2] - crop_frame[0]
                     image_cam_info['K'] = K.flatten().tolist()
-                    cam_info[image_filename] = image_cam_info
-        json.dump(cam_info, cam_info_output_file)
+                    new_cam_info[image_filename] = image_cam_info
+        json.dump(OrderedDict(sorted(new_cam_info.items(), key=lambda t: t[0])), cam_info_output_file)
 
 if __name__ == '__main__':
     import argparse
