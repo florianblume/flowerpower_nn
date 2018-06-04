@@ -267,25 +267,24 @@ def compute_indices_graph(original_shape, target_shape):
     # If we use an int step size, the offset error distributes when slicing resulting
     # in a smaller image than the pred_obj_coords
     # That's why we calculate the floating point range and then take ints individually
-    step_y = tf.cast(original_shape[1] / target_shape[1], tf.float32)
-    step_x = tf.cast(original_shape[2] / target_shape[2], tf.float32)
+    step_y = tf.cast(original_shape[0] / target_shape[0], tf.float32)
+    step_x = tf.cast(original_shape[1] / target_shape[1], tf.float32)
     start_y = tf.cast(step_y / 2, tf.float32)
     start_x = tf.cast(step_x / 2, tf.float32)
 
-    # Here we create the floating point range which we then use to index the target_obj_coords
-    # and segmentation_image
-    indices_y = tf.range(start_y, original_shape[1], step_y)
+    indices_y = tf.range(start_y, original_shape[0], step_y)
     indices_y_shape = tf.shape(indices_y)
-    indices_x = tf.range(start_x, original_shape[2], step_x)
-    # Tile the y indices like [1, 2, 3] -> [1, 2, 3, 1, 2, 3, ... indices_x.shape times]
-    indices_y = tf.tile(indices_y, tf.shape(indices_x))
-    # Tile the x indices like [1, 2, 3] -> [1, 1, indices_x.shape times, 2, 2, indices_x.shape times, ..]
-    indices_x = tf.reshape(tf.tile(tf.expand_dims(indices_x, -1), [1, indices_y_shape]), [-1])
+    indices_x = tf.range(start_x, original_shape[1], step_x)
+    indices_y = tf.reshape(indices_y, [-1, 1])
+    indices_y = tf.tile(indices_y, [1, tf.shape(indices_x)[0]])
+    indices_x = tf.reshape(indices_x, [1, -1])
+    indices_x = tf.tile(indices_x, [tf.shape(indices_y)[0], 1])
+    # Now we have two matrices of equal shape that we can combine to obtain the final index pairs
+    indices = tf.stack([indices_y, indices_x], axis=2)
     # Now retrieve the actual indices which reduce the rounding error compared to calculating
     # the step size, e.g. 7.9, and striding this step size along the image
-    indices_y = tf.cast(indices_y, tf.int32)
-    indices_x = tf.cast(indices_x, tf.int32)
-    return indices_y, indices_x
+    indices = tf.cast(tf.round(indices), tf.int32)
+    return indices
 
 def single_loss_graph(pred_obj_coord_image, image_padding, segmentation_image, 
                target_obj_coord_image, seg_and_coord_padding, color):
@@ -320,47 +319,52 @@ def single_loss_graph(pred_obj_coord_image, image_padding, segmentation_image,
     # Now we have the actual predicted area for each batch image individually
     # [:2] because we only need (height, width) without the channels
     actual_output_shape = output_shape[:2] - (image_padding_y, image_padding_x)
+    acutal_output_shape_with_channels = [actual_output_shape[0], actual_output_shape[1], 3]
     # Crop the output prediction to the actual area without padding
     cropped_pred_obj_coord_image = pred_obj_coord_image[:actual_output_shape[0],
-                                                        :actual_output_shape[1]]
+                                                        :actual_output_shape[1],
+                                                        :]
     # Now we compute the original shape of the ground truth and segmentation
-    actual_input_shape = input_shape[:2] - seg_and_coord_padding
+    actual_input_shape = input_shape[:2] - tf.cast(seg_and_coord_padding, tf.int32)
     # And also crop the segmentation and prediction to the actual area
     cropped_segmentation_image = segmentation_image[:actual_input_shape[0],
-                                                    :actual_input_shape[1]]
+                                                    :actual_input_shape[1],
+                                                    :]
     cropped_target_obj_coord_image = target_obj_coord_image[:actual_input_shape[0],
-                                                            :actual_input_shape[1]]
+                                                            :actual_input_shape[1],
+                                                            :]
 
     # Here we compute the relevant indices, e.g. if the output image is 1/8th of the original
     # input image, we use only every 8-th pixel horizontally and vertically. The code takes
     # care of the output image's size not being a divisor of the input image's.
-    indices_y, indices_x = compute_indices_graph(tf.shape(cropped_segmentation_image), 
-                                                      tf.shape(cropped_pred_obj_coord_image))
+    indices = compute_indices_graph(tf.shape(cropped_segmentation_image), 
+                                             tf.shape(cropped_pred_obj_coord_image))
 
     # Now create and object coord and segmentation image of the size of the output shape
     # that contains only the relevent indices
-    final_target_obj_coord_image = cropped_target_obj_coord_image[indices_y,
-                                                                  indices_x]
-    final_target_obj_coord_image = tf.reshape(final_target_obj_coord_image,
-                                              actual_output_shape)
+    final_target_obj_coord_image = tf.gather_nd(cropped_target_obj_coord_image, 
+                                                indices)
+    final_target_obj_coord_image = tf.reshape(final_target_obj_coord_image, 
+                                              acutal_output_shape_with_channels)
     final_target_obj_coord_image = tf.Print(final_target_obj_coord_image, 
                                             [final_target_obj_coord_image], 
-                                            "final target obj coord")
-    final_segmentation_image = cropped_segmentation_image[indices_y,
-                                                          indices_x]
+                                            "final target obj coord",
+                                            summarize=11907)
+    final_segmentation_image = tf.gather_nd(cropped_segmentation_image, indices)
     final_segmentation_image = tf.reshape(final_segmentation_image,
-                                          actual_output_shape)
+                                          acutal_output_shape_with_channels)
     final_segmentation_image = tf.Print(final_segmentation_image,
                                         [final_segmentation_image],
-                                        "final segmentation image")
+                                        "final segmentation image",
+                                            summarize=11907)
 
     segmentation_mask = tf.equal(final_segmentation_image, color)
     # We have a matrix of bool values of which indices to use after this step
-    segmentation_mask = tf.reduce_all(segmentation_mask, axis=3)
+    segmentation_mask = tf.reduce_all(segmentation_mask, axis=2)
 
     # L1 loss: sum of squared element-wise differences
     squared_diff = tf.square(final_target_obj_coord_image - cropped_pred_obj_coord_image)
-    loss = tf.reduce_mean(squared_diff, axis=3)
+    loss = tf.reduce_mean(squared_diff, axis=2)
     loss = tf.sqrt(loss)
     loss = tf.boolean_mask(loss, segmentation_mask)
     return tf.reduce_mean(loss)
@@ -381,7 +385,7 @@ def loss_graph(pred_obj_coord_images, image_paddings, segmentation_images,
     elements = (pred_obj_coord_images, image_paddings, segmentation_images,
                 target_obj_coord_images, seg_and_coord_paddings, color)
     # This computes the loss for each batch entry
-    loss = tf.map_fn(lambda x : single_loss_graph(*x), elements, name="loss_elem_mapping")
+    loss = tf.map_fn(lambda x: single_loss_graph(*x), elements, name="loss_elem_mapping", dtype=tf.float32)
     return tf.reduce_mean(loss)
 
 def data_generator(dataset, config, shuffle=True, batch_size=1):
@@ -404,7 +408,7 @@ def data_generator(dataset, config, shuffle=True, batch_size=1):
             # Get GT object coordinates and segmentation for image.
             image_id = image_ids[image_index]
 
-            new_size = (config.IMAGE_SHAPE[0], config.IMAGE_SHAPE[1])
+            image_shape = (config.IMAGE_SHAPE[0], config.IMAGE_SHAPE[1])
             image = dataset.load_image(image_id)
             segmentation_image = dataset.load_segmentation_image(image_id)
             obj_coord_image = dataset.load_obj_coord_image(image_id)
@@ -414,40 +418,38 @@ def data_generator(dataset, config, shuffle=True, batch_size=1):
                 batch_images = np.zeros(
                     (batch_size, image_shape[0], image_shape[1], 3), dtype=np.uint8)
                 batch_image_pads = np.zeros(
-                    (batch_size, 4), dtype=np.uint8)
+                    (batch_size, 2), dtype=np.uint8)
                 batch_segmentation_images = np.zeros(
                     (batch_size, image_shape[0], image_shape[1], 3), dtype=np.uint8)
                 batch_obj_coord_images = np.zeros(
-                    (batch_size, obj_coord_image.shape[0], obj_coord_image.shape[1], 3), dtype=np.float32)
+                    (batch_size, image_shape[0], image_shape[1], 3), dtype=np.float32)
                 batch_seg_and_coord_pads = np.zeros(
-                    (batch_size, 4), dtype=np.uint8)
+                    (batch_size, 2), dtype=np.uint8)
 
             # The utility function also returns the scale and padding which we dont' need here
             # thus we only retrieve the first return value
-            image, scale, image_padding = model_util.resize_and_pad_image(image, new_size)
+            image, scale, image_padding = model_util.resize_and_pad_image(image, image_shape)
             # No need to resize the segmentation images, we only resize the actual image
             # because the network apparently sometimes needs longer during gradient descent
             # if there are a lot of black pixels
-            segmentation_image, seg_and_coord_padding = model_util.pad_image(segmentation_image, new_size)
+            segmentation_image, seg_and_coord_padding = model_util.pad_image(segmentation_image, image_shape)
             # We don't resize the object coordinates, as that would distort the information
             # we only pad it to fit in the array
             # Same padding as for segmentation_image i.e. only store once
-            obj_coord_image = model_util.pad_image(obj_coord_image)[0]
+            obj_coord_image = model_util.pad_image(obj_coord_image, image_shape)[0]
 
             batch_images[b] = image
-            # top, bottom, left, right padding of input images
-            batch_image_pads[b] = [image_padding[0][0], image_padding[0][1], 
-                                   image_padding[1][0], image_padding[1][1]]
+            # bottom, right padding of input images
+            batch_image_pads[b] = image_padding
             batch_segmentation_images[b] = segmentation_image
             batch_obj_coord_images[b] = obj_coord_image
-            batch_seg_and_coord_pads[b] = [seg_and_coord_padding[0][0], seg_and_coord_padding[0][1], 
-                                           seg_and_coord_padding[1][0], seg_and_coord_padding[1][1]]
+            batch_seg_and_coord_pads[b] = seg_and_coord_padding
 
             b += 1
 
             # Batch full?
             if b >= batch_size:
-                yield [batch_images, batch_iamge_pads, 
+                yield [batch_images, batch_image_pads, 
                 batch_segmentation_images, batch_obj_coord_images, batch_seg_and_coord_pads], []
 
                 # start a new batch
@@ -541,7 +543,7 @@ class FlowerPowerCNN:
                 input_gt_obj_coord_image, input_seg_and_coord_paddings, color])
 
             # Model
-            inputs = [input_image, input_paddings, 
+            inputs = [input_image, input_image_paddings, 
                     input_segmentation_image, input_gt_obj_coord_image, input_seg_and_coord_paddings,
                     color]
 
