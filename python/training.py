@@ -61,6 +61,16 @@ def train(config):
         # Fill training dict
         for i, image in enumerate(images):
             segmentation_image = segmentation_renderings[i]
+            loaded_segmentation_image = cv2.imread(os.path.join(segmentations_path, segmentation_image))
+            # We do not want to scale object coordinates in the network because that creates
+            # imprecisions. I.e. we can only pad object coordinates to fill the image size
+            # but not resize them. This way, the object coordinates would not fit in the
+            # batch arrays when width or height exceed the dimensions specified in the config.
+            if loaded_segmentation_image.shape[0] > config.IMAGE_DIM or \
+               loaded_segmentation_image.shape[1] > config.IMAGE_DIM:
+                raise Exception("Image dimension exceeds image dim specified in config. \
+                    File: {}".format(image))
+
             object_coordinate_image = obj_coordinate_renderings[i]
             # Check both cases, it might be that the image is not to be added at all
             if image in train_filenames:

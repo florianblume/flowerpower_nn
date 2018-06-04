@@ -10,6 +10,10 @@ def visualize_errors(images1_path, images2_path, output_path, output_path_float=
     util.sort_list_by_num_in_string_entries(images1)
     images2 = util.get_files_at_path_of_extensions(images2_path, [".tiff"])
     util.sort_list_by_num_in_string_entries(images2)
+    # The threshold to use as maximum (i.e. 255 in RGB) because using the
+    # maximum in the prediction itself might make smaller errors vanish
+    # if the maximum is a lot larger than the rest of the coordinates.
+    coord_threshold = 10
     for index in range(len(images1)):
         image1 = images1[index]
         image2 = images2[index]
@@ -23,14 +27,13 @@ def visualize_errors(images1_path, images2_path, output_path, output_path_float=
         # input size
         image1_loaded = util.shrink_image_with_step_size(image1_loaded, image2_loaded.shape)
         diff = image1_loaded - image2_loaded
+        diff = np.absolute(diff)
         if output_path_float:
             tiff.imwrite(output_filename_float, diff)
-        max_r = np.amax(diff[:,:,0])
-        max_g = np.amax(diff[:,:,1])
-        max_b = np.amax(diff[:,:,2])
-        diff = (diff[:,:] / [max_r, max_g, max_b]) * 255
+        diff = (diff / coord_threshold) * 255
+        diff[diff > 255] = 255
         diff = diff.astype(np.int32)
-        #cv2.imwrite(output_filename, diff)
+        cv2.imwrite(output_filename, diff)
 
 if __name__ == '__main__':
     import argparse

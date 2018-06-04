@@ -6,7 +6,7 @@ import numpy as np
 import tifffile as tiff
 
 import inference as model_inference
-import util.util as util
+from model import model_util
 from model import inference_config
 
 def inference(config):
@@ -23,7 +23,7 @@ def inference(config):
         prediction = result["prediction"]["obj_coords"]
         segmentation_image_filename = result["segmentation_image"]
         segmentation_image = cv2.imread(os.path.join(segmentation_images_path, segmentation_image_filename))
-        shrunk_segmentation_image = util.shrink_image_with_step_size(segmentation_image, prediction.shape)
+        shrunk_segmentation_image = model_util.shrink_image_with_step_size(segmentation_image, prediction.shape)
         final_image = np.zeros(prediction.shape, dtype=np.float16)
         indices = np.where(shrunk_segmentation_image == config.SEGMENTATION_COLOR)
         final_image[indices] = prediction[indices]
