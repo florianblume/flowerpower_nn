@@ -337,8 +337,9 @@ def single_loss_graph(pred_obj_coord_image, image_padding, segmentation_image,
     # Here we compute the relevant indices, e.g. if the output image is 1/8th of the original
     # input image, we use only every 8-th pixel horizontally and vertically. The code takes
     # care of the output image's size not being a divisor of the input image's.
-    indices = compute_indices_graph(tf.shape(cropped_segmentation_image), 
-                                             tf.shape(cropped_pred_obj_coord_image))
+    indices = compute_indices_graph(tf.shape(cropped_segmentation_image)[:2], 
+                                             tf.shape(cropped_pred_obj_coord_image)[:2])
+    #indices = tf.Print(indices, [indices], "indices", summarize=(63 * 63))
 
     # Now create and object coord and segmentation image of the size of the output shape
     # that contains only the relevent indices
@@ -346,17 +347,9 @@ def single_loss_graph(pred_obj_coord_image, image_padding, segmentation_image,
                                                 indices)
     final_target_obj_coord_image = tf.reshape(final_target_obj_coord_image, 
                                               acutal_output_shape_with_channels)
-    final_target_obj_coord_image = tf.Print(final_target_obj_coord_image, 
-                                            [final_target_obj_coord_image], 
-                                            "final target obj coord",
-                                            summarize=11907)
     final_segmentation_image = tf.gather_nd(cropped_segmentation_image, indices)
     final_segmentation_image = tf.reshape(final_segmentation_image,
                                           acutal_output_shape_with_channels)
-    final_segmentation_image = tf.Print(final_segmentation_image,
-                                        [final_segmentation_image],
-                                        "final segmentation image",
-                                            summarize=11907)
 
     segmentation_mask = tf.equal(final_segmentation_image, color)
     # We have a matrix of bool values of which indices to use after this step
@@ -867,7 +860,6 @@ class FlowerPowerCNN:
             # padding function as offset where the actual image starts
             v_padding = prediction.shape[0] - v_padding
             h_padding = prediction.shape[1] - h_padding
-            tiff.imsave("test.tiff", prediction.astype(np.float16))
 
             # Remove the padding that was added and rescale with the scale corresponding
             # to how the input image was resized to fill the requeste image dimensions

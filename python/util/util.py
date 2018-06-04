@@ -6,7 +6,7 @@ import os
 import re
 import math
 
-from ..model import model_util
+from model import model_util
 
 def pair_object_coords_with_index(image, original_im_size, step_y, step_x):
     """ This function pairs the object coords in a detection image with their

@@ -82,7 +82,7 @@ def resize_and_pad_image(image, shape):
     right_pad = shape[1] - w
     padding = [(top_pad, bottom_pad), (left_pad, right_pad), (0, 0)]
     image = np.pad(image, padding, mode='constant', constant_values=0)
-    return image, scale, (padding[0][1], padding[0][1])
+    return image, scale, (padding[0][1], padding[1][1])
 
 def pad_image(image, shape):
     h, w = image.shape[:2]
@@ -93,4 +93,4 @@ def pad_image(image, shape):
     right_pad = shape[1] - w
     padding = [(top_pad, bottom_pad), (left_pad, right_pad), (0, 0)]
     image = np.pad(image, padding, mode='constant', constant_values=0)
-    return image, (padding[0][1], padding[0][1])
+    return image, (padding[0][1], padding[1][1])
