@@ -77,12 +77,14 @@ class VisualizePredictionCallback(keras.callbacks.Callback):
             # - it is not actually needed for prediction but the model expects the third image
             # as it is build for training
 
+            """
             prediction, loss = self.model.predict([np.array([scaled_padded_image]), 
                                                    np.array([image_padding]),
                                                    np.array([padded_segmentation_image]), 
                                                    np.array([padded_segmentation_image]),
                                                    np.array([seg_and_coord_padding])])
             tiff.imsave(file_path, prediction.astype(np.float16))
+            """
 
 
 ############################################################
