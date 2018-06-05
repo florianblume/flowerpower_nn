@@ -362,6 +362,7 @@ def single_loss_graph(pred_obj_coord_image, image_padding, segmentation_image,
     segmentation_mask = tf.equal(final_segmentation_image, color)
     # We have a matrix of bool values of which indices to use after this step
     segmentation_mask = tf.reduce_all(segmentation_mask, axis=2)
+    segmentation_mask = tf.Print(segmentation_mask, [segmentation_mask], "segmentation_mask", summarize=10000)
 
     # L1 loss: sum of squared element-wise differences
     squared_diff = tf.square(final_target_obj_coord_image - cropped_pred_obj_coord_image)

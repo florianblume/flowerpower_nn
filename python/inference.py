@@ -24,8 +24,11 @@ def inference(base_path, config):
     object_model_path = config.OBJECT_MODEL_PATH 
     weights_path = config.WEIGHTS_PATH 
     batch_size = config.BATCH_SIZE
-    image_list = config.IMAGE_LIST
-    output_path = config.OUTPUT_PATH
+    image_list = os.path.join(base_path, config.IMAGE_LIST)
+    output_path = os.path.join(base_path, config.OUTPUT_PATH)
+
+    if not os.path.exists(output_path):
+        os.makedirs(output_path)
 
     assert os.path.exists(images_path), \
             "The images path {} does not exist.".format(images_path)

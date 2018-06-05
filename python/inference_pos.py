@@ -74,7 +74,7 @@ def inference(base_path, config):
                                     "obj" : os.path.basename(object_model_path)}]
 
     print("Writing results to {}".format(output_file))
-    with open(os.path.join(base_path, output_file), "w") as json_file:
+    with open(output_file, "w") as json_file:
         json.dump(converted_results, json_file)
 
 if __name__ == '__main__':
