@@ -5,7 +5,7 @@ import cv2
 import numpy as np
 import math
 
-import inference as model_inference
+import inference as inference_script
 import util.util as util
 from model import inference_config
 
@@ -46,16 +46,16 @@ def ransac(prediction, imsize, cam_info):
     )
     return retval, rvec, tvec
 
-def inference(config):
+def inference(base_path, config):
 
     cam_info_path = config.CAM_INFO_PATH
     object_model_path = config.OBJECT_MODEL_PATH
-    output_file = config.OUTPUT_FILE
+    output_file = os.path.join(base_path, config.OUTPUT_FILE)
 
     assert os.path.exists(cam_info_path), \
             "The camera info file {} does not exist.".format(cam_info_path)
 
-    results = model_inference.inference(config)
+    results = inference_script.inference(base_path, config)
     converted_results = {}
 
     with open(cam_info_path, "r") as cam_info_file:
@@ -74,7 +74,7 @@ def inference(config):
                                     "obj" : os.path.basename(object_model_path)}]
 
     print("Writing results to {}".format(output_file))
-    with open(output_file, "w") as json_file:
+    with open(os.path.join(base_path, output_file), "w") as json_file:
         json.dump(converted_results, json_file)
 
 if __name__ == '__main__':
@@ -88,4 +88,4 @@ if __name__ == '__main__':
     arguments = parser.parse_args()
     config = inference_config.InferenceConfig()
     config.parse_config_from_json_file(arguments.config)
-    inference(config)
+    inference(os.path.dirname(arguments.config), config)

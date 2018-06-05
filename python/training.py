@@ -17,7 +17,7 @@ from model import dataset
 #from model import model
 from model import training_config
 
-def train(config):
+def train(base_path, config):
 
     # We do not retrieve the color from the config (it should not be specified anyway)
     # because we render our own segmentation images using white color
@@ -27,7 +27,7 @@ def train(config):
     ground_truth_path = config.GT_PATH 
     data_path = config.DATA_PATH 
     weights_path = config.WEIGHTS_PATH
-    output_path = config.OUTPUT_PATH
+    output_path = os.path.join(base_path, config.OUTPUT_PATH)
 
     assert os.path.exists(object_model_path), "The object model file {} does not exist.".format(object_model_path)
     assert os.path.exists(ground_truth_path), "The ground-truth file {} does not exist.".format(ground_truth_path)
@@ -55,9 +55,9 @@ def train(config):
     val_dataset = dataset.Dataset()
 
     # Open the json files that hold the filenames for the respective datasets
-    with open(config.TRAIN_FILE, 'r') as train_file, \
-         open(config.VAL_FILE, 'r') as val_file, \
-         open(config.PREDICTION_EXAMPLES_FILE, 'r') as prediction_examples_file:
+    with open(os.path.join(base_path, config.TRAIN_FILE), 'r') as train_file, \
+         open(os.path.join(base_path, config.VAL_FILE), 'r') as val_file, \
+         open(os.path.join(base_path, config.PREDICTION_EXAMPLES_FILE), 'r') as prediction_examples_file:
         train_filenames = json.load(train_file)
         val_filenames = json.load(val_file)
 
@@ -75,8 +75,9 @@ def train(config):
             # batch arrays when width or height exceed the dimensions specified in the config.
             if loaded_segmentation_image.shape[0] > config.IMAGE_DIM or \
                loaded_segmentation_image.shape[1] > config.IMAGE_DIM:
-                raise Exception("Image dimension exceeds image dim specified in config. \
-                    File: {}".format(image))
+                raise Exception(
+                    "Image dimension exceeds image dim specified in config. File: {}".\
+                                    format(image))
 
             object_coordinate_image = obj_coordinate_renderings[i]
 
@@ -100,8 +101,8 @@ def train(config):
                 prediction_examples.append({"image" : image_path,
                                             "segmentation" : segmentation_path})
 
-    print("Added {} images for training and {} images for \
-                    validation.".format(train_dataset.size(), val_dataset.size()))
+    print("Added {} images for training and {} images for validation.". \
+                        format(train_dataset.size(), val_dataset.size()))
 
     # Here we import the request model
     model = importlib.import_module("model." + config.MODEL + ".model")
@@ -117,11 +118,12 @@ if __name__ == '__main__':
     import argparse
 
     # Parse command line arguments
-    parser = argparse.ArgumentParser(description='This script provides functionality to train the FlowerPower network.')
+    parser = argparse.ArgumentParser(
+        description='This script provides functionality to train the FlowerPower network.')
     parser.add_argument("--config",
                         required=True,
                         help="The path to the config file.")
     arguments = parser.parse_args()
     config = training_config.TrainingConfig()
     config.parse_config_from_json_file(arguments.config)
-    train(config)
+    train(os.path.dirname(arguments.config), config)

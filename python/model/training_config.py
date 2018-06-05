@@ -82,13 +82,19 @@ class TrainingConfig(config.Config):
     # If data is present there and it is not requested to re-
     # generate data through the REGENERATE_DATA option, the
     # data will be loaded from there.
+    #
+    # Relative path to config file
     DATA_PATH = ""
 
     # The file which contains the image filenames that will be used for training.
     # The images have to be present in the DATA_PATH/images folder.
+    #
+    # Relative path to config file
     TRAIN_FILE = ""
 
     # Analogously, this file contains the filenames to use for validation.
+    #
+    # Relative path to config file
     VAL_FILE = ""
 
     # The JSON file that contains the names of the images to perform an
@@ -98,6 +104,8 @@ class TrainingConfig(config.Config):
     # The path where the network can create necessary data
     # This is not the log folder where the network will store
     # its weights, etc, but only the rendered images etc
+    #
+    # Relative path to config file
     OUTPUT_PATH = ""
 
     # Indicates whether images should be written to Tensorboard logs

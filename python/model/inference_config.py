@@ -36,9 +36,13 @@ class InferenceConfig(config.Config):
     CAM_INFO_PATH = ""
 
     # The path where to network can store intermediate results etc
+    #
+    # Relative path to config file
     OUTPUT_PATH = ""
 
     # The file that the results are going to be written to
+    #
+    # Relative path to config file
     OUTPUT_FILE = ""
 
     # The number of RANSAC iterations to compute the final pose

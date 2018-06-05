@@ -5,16 +5,16 @@ import cv2
 import numpy as np
 import tifffile as tiff
 
-import inference as model_inference
+import inference as inference_script
 from model import model_util
 from model import inference_config
 
-def inference(config):
-    results = model_inference.inference(config)
+def inference(base_path, config):
+    results = inference_script.inference(base_path, config)
 
     # Path exsitence check during inference
     segmentation_images_path = config.SEGMENTATION_IMAGES_PATH
-    output_path = config.OUTPUT_PATH
+    output_path = os.path.join(base_path, config.OUTPUT_PATH)
 
     for i, result in enumerate(results):
         image_filename = result["image"]
@@ -41,4 +41,4 @@ if __name__ == '__main__':
     arguments = parser.parse_args()
     config = inference_config.InferenceConfig()
     config.parse_config_from_json_file(arguments.config)
-    inference(config)
+    inference(os.path.dirname(arguments.config), config)

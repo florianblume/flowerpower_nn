@@ -52,8 +52,9 @@ class VisualizePredictionCallback(keras.callbacks.Callback):
         if not os.path.exists(output_path):
             os.makedirs(output_path)
 
-        print("Performing sample prediction with model of epoch {}. \
-                Results stored at {}.".format(epoch, output_path))
+        print(
+            "Performing sample prediction with model of epoch {}. Results stored at {}.".\
+                    format(epoch, output_path))
 
         for example in self.prediction_examples:
 
@@ -76,16 +77,13 @@ class VisualizePredictionCallback(keras.callbacks.Callback):
             # - it is not actually needed for prediction but the model expects the third image
             # as it is build for training
 
-
-            # Currently not working
-            """
             prediction, loss = self.model.predict([np.array([scaled_padded_image]), 
-                                                   np.array([np.array([image_padding])]),
+                                                   np.array([image_padding]),
                                                    np.array([padded_segmentation_image]), 
                                                    np.array([padded_segmentation_image]),
-                                                   np.array([np.array(seg_and_coord_padding)])])
+                                                   np.array([seg_and_coord_padding])])
             tiff.imsave(file_path, prediction.astype(np.float16))
-            """
+
 
 ############################################################
 #  Utility Functions
@@ -385,6 +383,7 @@ def loss_graph(pred_obj_coord_images, image_paddings, segmentation_images,
                             the original input image because both are not reszied.
     color: [r, g, b]. The object's color in the segmentation image.
     """
+    color = tf.Print(color, [tf.shape(color)], "color")
     elements = (pred_obj_coord_images, image_paddings, segmentation_images,
                 target_obj_coord_images, seg_and_coord_paddings, color)
     # This computes the loss for each batch entry
@@ -494,10 +493,6 @@ class FlowerPowerCNN:
                                             name="input_segmentation_image", 
                                             dtype=tf.float32)
 
-        # The color of the object model in the segmentation image
-        color = K.constant(config.SEGMENTATION_COLOR, dtype=tf.float32)
-        color = KL.Input(tensor=color)
-
         # Build the shared convolutional layers.
         # Bottom-up Layers
         # Returns a list of the last layers of each stage, 5 in total.
@@ -528,6 +523,11 @@ class FlowerPowerCNN:
         obj_coord_image = detection_head_graph(C3, 1024)
 
         if mode == "training":
+
+            # The color of the object model in the segmentation image
+            # We need to tile the color as it gets unpacked into an empty array otherwise
+            color = K.constant(np.tile(config.SEGMENTATION_COLOR, (config.BATCH_SIZE, 1)), dtype=tf.float32)
+            color = KL.Input(tensor=color)
 
             # Groundtruth object coordinates
             input_gt_obj_coord_image = KL.Input(shape=config.IMAGE_SHAPE.tolist(), 

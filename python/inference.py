@@ -14,7 +14,7 @@ from model import dataset
 #from model import model
 from model import inference_config
 
-def inference(config):
+def inference(base_path, config):
 
     images_path = config.IMAGES_PATH
     image_extension = config.IMAGE_EXTENSION 
@@ -111,16 +111,3 @@ def inference(config):
                             })
 
     return results
-
-if __name__ == '__main__':
-    import argparse
-
-    # Parse command line arguments
-    parser = argparse.ArgumentParser(description='This script provides functionality to run the FlowerPower network.')
-    parser.add_argument("--config",
-                        required=True,
-                        help="The path to the config file.")
-    arguments = parser.parse_args()
-    config = inference_config.InferenceConfig()
-    config.parse_config_from_json_file(arguments.config)
-    inference(config)
