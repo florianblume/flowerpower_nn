@@ -26,7 +26,7 @@ def train(config):
     object_model_path = config.OBJECT_MODEL_PATH 
     ground_truth_path = config.GT_PATH 
     data_path = config.DATA_PATH 
-    weights_path = config.WEIGHTS_PATH 
+    weights_path = config.WEIGHTS_PATH
     output_path = config.OUTPUT_PATH
 
     assert os.path.exists(object_model_path), "The object model file {} does not exist.".format(object_model_path)
@@ -55,9 +55,16 @@ def train(config):
     val_dataset = dataset.Dataset()
 
     # Open the json files that hold the filenames for the respective datasets
-    with open(config.TRAIN_FILE, 'r') as train_file, open(config.VAL_FILE, 'r') as val_file:
+    with open(config.TRAIN_FILE, 'r') as train_file, \
+         open(config.VAL_FILE, 'r') as val_file, \
+         open(config.PREDICTION_EXAMPLES_FILE, 'r') as prediction_examples_file:
         train_filenames = json.load(train_file)
         val_filenames = json.load(val_file)
+
+        # The filenames that the network is supposed to run inference on after each epoch
+        prediction_example_filenames = json.load(prediction_examples_file)
+        prediction_examples = []
+
         # Fill training dict
         for i, image in enumerate(images):
             segmentation_image = segmentation_renderings[i]
@@ -72,28 +79,39 @@ def train(config):
                     File: {}".format(image))
 
             object_coordinate_image = obj_coordinate_renderings[i]
+
+            image_path = os.path.join(images_path, image)
+            segmentation_path = os.path.join(segmentations_path, segmentation_image)
+            obj_coord_path = os.path.join(obj_coords_path, object_coordinate_image)
+
             # Check both cases, it might be that the image is not to be added at all
             if image in train_filenames:
                 train_dataset.add_training_example(
-                        os.path.join(images_path, image),
-                        os.path.join(segmentations_path, segmentation_image),
-                        os.path.join(obj_coords_path, object_coordinate_image))
+                        image_path,
+                        segmentation_path,
+                        obj_coord_path)
             elif image in val_filenames:
                 val_dataset.add_training_example(
-                        os.path.join(images_path, image),
-                        os.path.join(segmentations_path, segmentation_image),
-                        os.path.join(obj_coords_path, object_coordinate_image))
+                        image_path,
+                        segmentation_path,
+                        obj_coord_path)
 
-    print("Added {} images for training and {} images for validation.".format(train_dataset.size(), val_dataset.size()))
+            if image in prediction_example_filenames:
+                prediction_examples.append({"image" : image_path,
+                                            "segmentation" : segmentation_path})
+
+    print("Added {} images for training and {} images for \
+                    validation.".format(train_dataset.size(), val_dataset.size()))
 
     # Here we import the request model
     model = importlib.import_module("model." + config.MODEL + ".model")
     network_model = model.FlowerPowerCNN('training', config, output_path)
     if weights_path != "":
-        network_model.load_weights(weights_path, by_name=True, exclude=config.LAYERS_TO_EXCLUDE_FROM_WEIGHT_LOADING)
+        network_model.load_weights(weights_path, 
+            by_name=True, exclude=config.LAYERS_TO_EXCLUDE_FROM_WEIGHT_LOADING)
 
     print("Starting training.")
-    network_model.train(train_dataset, val_dataset, config)
+    network_model.train(train_dataset, val_dataset, prediction_examples, config)
 
 if __name__ == '__main__':
     import argparse

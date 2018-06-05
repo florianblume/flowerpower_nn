@@ -37,45 +37,55 @@ class VisualizePredictionCallback(keras.callbacks.Callback):
 
     shape = None
 
-    image_id = 0
+    images = None
 
-    image_name = ""
-
-    def __init__(self, model, output_path, dataset, shape):
+    def __init__(self, model, output_path, dataset, prediction_examples, shape):
         self.output_path = output_path
         self.dataset = dataset
         self.model = model
         self.shape = shape
-        image_ids = dataset.get_image_ids()
-        self.image_id = image_ids[randint(0, len(image_ids))]
-        image_name = os.path.basename(dataset.get_image(self.image_id))
-        image_name = os.path.splitext(image_name)[0]
-        self.image_name = image_name
+        self.prediction_examples = prediction_examples
 
     def on_epoch_end(self, epoch, logs={}):
-        output_path = os.path.join(self.output_path, "example_predictions")
+        output_path = os.path.join(self.output_path, "example_predictions", "epoch_{}".format(epoch))
 
         if not os.path.exists(output_path):
             os.makedirs(output_path)
 
-        file_path = os.path.join(output_path, "epoch_{}_image_{}.tiff".format(epoch, self.image_name))
+        print("Performing sample prediction with model of epoch {}. \
+                Results stored at {}.".format(epoch, output_path))
 
-        print("Performing sample prediction with model of epoch {}. Result stored at {}.".format(epoch, file_path))
+        for example in self.prediction_examples:
 
-        image = self.dataset.load_image(self.image_id)
-        image = util.resize_image(image, self.shape)[0]
-        segmentation_image = self.dataset.load_image(self.image_id)
-        segmentation_image = util.resize_image(segmentation_image, self.shape)[0]
+            image = example['image']
+            segmentation = example['segmentation']
 
-        # Passing segmentation image as placeholder for the gt object coord image
-        # - it is not actually needed for prediction but the model expects the third image
-        # as it is build for training
-        prediction, loss = self.model.predict([np.array([image]), 
-                                               np.array([segmentation_image]), 
-                                               np.array([segmentation_image])
-                                              ])
-        tiff.imsave(file_path, prediction.astype(np.float16))
-        return
+            image_name = os.path.splitext(os.path.basename(image))[0]
+
+            file_path = os.path.join(output_path, "epoch_{}_image_{}.tiff".format(epoch, image_name))
+
+            loaded_image = cv2.imread(image)
+            scaled_padded_image, scale, image_padding = model_util.resize_and_pad_image(
+                                                                        loaded_image, 
+                                                                        self.shape)
+            segmentation_image = cv2.imread(segmentation)
+            padded_segmentation_image, seg_and_coord_padding = \
+                                        model_util.pad_image(segmentation_image, self.shape)
+
+            # Passing segmentation image as placeholder for the gt object coord image
+            # - it is not actually needed for prediction but the model expects the third image
+            # as it is build for training
+
+
+            # Currently not working
+            """
+            prediction, loss = self.model.predict([np.array([scaled_padded_image]), 
+                                                   np.array([np.array([image_padding])]),
+                                                   np.array([padded_segmentation_image]), 
+                                                   np.array([padded_segmentation_image]),
+                                                   np.array([np.array(seg_and_coord_padding)])])
+            tiff.imsave(file_path, prediction.astype(np.float16))
+            """
 
 ############################################################
 #  Utility Functions
@@ -662,7 +672,7 @@ class FlowerPowerCNN:
         self.checkpoint_path = self.checkpoint_path.replace(
             "*epoch*", "{epoch:04d}")
 
-    def train(self, train_dataset, val_dataset, config, verbose=0):
+    def train(self, train_dataset, val_dataset, prediction_examples, config, verbose=0):
         
         learning_rates = config.LEARNING_RATE
         epochs = config.EPOCHS
@@ -695,7 +705,10 @@ class FlowerPowerCNN:
                                         write_images=config.WRITE_IMAGES),
             keras.callbacks.ModelCheckpoint(self.checkpoint_path,
                                             verbose=0, save_weights_only=True),
-            VisualizePredictionCallback(self, self.log_dir, train_dataset, config.IMAGE_SHAPE)
+            VisualizePredictionCallback(self, self.log_dir, 
+                                              train_dataset, 
+                                              prediction_examples, 
+                                              config.IMAGE_SHAPE)
         ]
 
         # Common parameters to pass to fit_generator()

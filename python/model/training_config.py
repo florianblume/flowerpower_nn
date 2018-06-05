@@ -91,6 +91,10 @@ class TrainingConfig(config.Config):
     # Analogously, this file contains the filenames to use for validation.
     VAL_FILE = ""
 
+    # The JSON file that contains the names of the images to perform an
+    # example prediction on after every epoch.
+    PREDICTION_EXAMPLES_FILE = ""
+
     # The path where the network can create necessary data
     # This is not the log folder where the network will store
     # its weights, etc, but only the rendered images etc
