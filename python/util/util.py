@@ -73,7 +73,7 @@ def pair_object_coords_with_index(image, original_im_size, step_y, step_x):
             if np.any(obj_coord != 0):
                 # If all coords are 0, then we are outside of the segmentation mask
                 object_points.append(obj_coord)
-                image_points.append([steps_y[i], steps_x[j]])
+                image_points.append([steps_x[j], steps_y[i]])
 
     object_points = np.array(object_points).astype(np.float32)
     image_points = np.array(image_points).astype(np.float32)

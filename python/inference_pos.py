@@ -10,29 +10,15 @@ import inference as inference_script
 import util.util as util
 from model import inference_config
 
-def eulerAnglesToRotationMatrix(theta) :
-    theta *= math.pi
-    theta /= -180.0
-     
-    R_x = np.array([[1,         0,                   0                   ],
-                    [0,         math.cos(theta[0]),  math.sin(theta[0])  ],
-                    [0,         -math.sin(theta[0]), math.cos(theta[0])  ]
-                    ])
-                     
-    R_y = np.array([[math.cos(theta[1]),    0,      -math.sin(theta[1])  ],
-                    [0,                     1,      0                    ],
-                    [math.sin(theta[1]),    0,      math.cos(theta[1])   ]
-                    ])
-                 
-    R_z = np.array([[math.cos(theta[2]),    math.sin(theta[2]),     0],
-                    [-math.sin(theta[2]),   math.cos(theta[2]),     0],
-                    [0,                     0,                      1]
-                    ])
-                     
-                     
-    R = np.dot(np.dot( R_x, R_y ), R_z)
- 
-    return R
+def compute_reprojection(prediction, rvec, tvec, cam_info):
+    prediction = prediction[prediction != [0, 0, 0]]
+    prediction = prediction.reshape((int(prediction.shape[0] / 3), 3))
+    reprojection, _ = cv2.projectPoints(prediction,
+                                        rvec,
+                                        tvec,
+                                        np.array(cam_info['K']).reshape(3, 3),
+                                        None)
+    return reprojection
 
 def ransac(prediction, imsize, cam_info):
     obj_coords = prediction['obj_coords']
@@ -45,8 +31,11 @@ def ransac(prediction, imsize, cam_info):
                               image_points, 
                               np.array(cam_info['K']).reshape(3, 3), 
                               None,
-                              iterationsCount=1000
+                              iterationsCount=100
     )
+    reprojection = compute_reprojection(obj_coords, rvec, tvec, cam_info)
+    error = np.mean(np.absolute(image_points - reprojection))
+    print("Medium error for computed pose: {}.".format(error))
     return retval, rvec, tvec
 
 def inference(base_path, config):
@@ -69,9 +58,9 @@ def inference(base_path, config):
             prediction = result["prediction"]
             image = cv2.imread(os.path.join(config.IMAGES_PATH, key))
             pose = ransac(prediction, image.shape, cam_info[key])
-            rotation_matrix = eulerAnglesToRotationMatrix(pose[1])
+            rotation_matrix = cv2.Rodrigues(pose[1])[0]
             # Translation is inverted somehow
-            translation_vector = -pose[2]
+            translation_vector = pose[2]
             converted_results[key] = [{"R" : rotation_matrix.flatten().tolist(), 
                                     "t" : translation_vector.flatten().tolist(), 
                                     "bb" : result["bb"].flatten().tolist(), 
