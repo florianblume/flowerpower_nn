@@ -4,12 +4,15 @@ import json
 import cv2
 import numpy as np
 import math
+from collections import OrderedDict
 
 import inference as inference_script
 import util.util as util
 from model import inference_config
 
 def eulerAnglesToRotationMatrix(theta) :
+    theta *= math.pi
+    theta /= -180.0
      
     R_x = np.array([[1,         0,                   0                   ],
                     [0,         math.cos(theta[0]),  math.sin(theta[0])  ],
@@ -56,7 +59,7 @@ def inference(base_path, config):
             "The camera info file {} does not exist.".format(cam_info_path)
 
     results = inference_script.inference(base_path, config)
-    converted_results = {}
+    converted_results = OrderedDict()
 
     with open(cam_info_path, "r") as cam_info_file:
         cam_info = json.load(cam_info_file)
@@ -67,7 +70,8 @@ def inference(base_path, config):
             image = cv2.imread(os.path.join(config.IMAGES_PATH, key))
             pose = ransac(prediction, image.shape, cam_info[key])
             rotation_matrix = eulerAnglesToRotationMatrix(pose[1])
-            translation_vector = pose[2]
+            # Translation is inverted somehow
+            translation_vector = -pose[2]
             converted_results[key] = [{"R" : rotation_matrix.flatten().tolist(), 
                                     "t" : translation_vector.flatten().tolist(), 
                                     "bb" : result["bb"].flatten().tolist(), 

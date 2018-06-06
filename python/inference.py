@@ -56,13 +56,20 @@ def inference(base_path, config):
 
     print("Preparing data.")
 
-        # TODO: Support file name list
+    temp_image_paths = []
+    temp_segmentation_image_paths = []
 
-    # Prepare data, i.e. crop images to the segmentation mask
     with open(image_list, "r") as loaded_image_list:
         images_to_process = json.load(loaded_image_list)
-        image_paths = [image_path for image_path in image_paths if image_path in images_to_process]
+        for index in range(len(image_paths)):
+            if image_paths[index] in images_to_process:
+                temp_image_paths.append(image_paths[index])
+                temp_segmentation_image_paths.append(segmentation_image_paths[index])
 
+    image_paths = temp_image_paths
+    segmentation_image_paths = temp_segmentation_image_paths
+
+    # Prepare data, i.e. crop images to the segmentation mask
     for index in range(len(image_paths)):
         image_path = image_paths[index]
         image = cv2.imread(os.path.join(images_path, image_path))

@@ -13,10 +13,6 @@ import renderer.renderer as renderer
 import tifffile as tiff
 import matplotlib.pyplot as plt
 
-OBJ_COORD_FILE_EXTENSION = "_obj_coordinates.tiff"
-SEG_FILE_EXTENSION = "_segmentation.png"
-
-
 def generate_data(images_path, image_extension, object_model_path, ground_truth_path, 
                   cam_info_path, segmentation_color, output_path):
 
@@ -89,21 +85,30 @@ def generate_data(images_path, image_extension, object_model_path, ground_truth_
                     segmentation_rendering[segmentation_rendering_indices] = segmentation_color
                     # We need to write the crops into the new camera info file because the principal points 
                     # changes when we crop the image
-                    cropped_segmentation, crop_frame = util.crop_image_on_segmentation_color(segmentation_rendering, 
-                                                                              segmentation_rendering,
-                                                                              segmentation_color, return_frame=True)
-                    segmentation_rendering_path = image_filename_without_extension + SEG_FILE_EXTENSION
-                    segmentation_rendering_path = os.path.join(segmentations_output_path, segmentation_rendering_path)
+                    cropped_segmentation, crop_frame = util.crop_image_on_segmentation_color(
+                                                                  segmentation_rendering, 
+                                                                  segmentation_rendering,
+                                                                  segmentation_color, return_frame=True)
+                    segmentation_rendering_path = "segmentation_" + 
+                                                  image_filename_without_extension + 
+                                                  ".png"
+                    segmentation_rendering_path = os.path.join(segmentations_output_path, 
+                                                            segmentation_rendering_path)
                     cv2.imwrite(segmentation_rendering_path, cropped_segmentation)
 
                     # Render, crop and save object coordinates
-                    object_coordinates_rendering = renderings[renderer.RENDERING_MODE_OBJ_COORDS].astype(np.float16)
+                    object_coordinates_rendering = renderings[renderer.RENDERING_MODE_OBJ_COORDS]\
+                                                              .astype(np.float16)
 
-                    object_coordinates = util.crop_image_on_segmentation_color(object_coordinates_rendering, 
-                                                                              segmentation_rendering,
-                                                                              segmentation_color)
-                    object_coordinates_rendering_path = image_filename_without_extension + OBJ_COORD_FILE_EXTENSION
-                    object_coordinates_rendering_path = os.path.join(obj_coords_output_path, object_coordinates_rendering_path)
+                    object_coordinates = util.crop_image_on_segmentation_color(
+                                                                    object_coordinates_rendering, 
+                                                                    segmentation_rendering,
+                                                                    segmentation_color)
+                    object_coordinates_rendering_path = "obj_coords_" + 
+                                                        image_filename_without_extension + 
+                                                        ".tiff"
+                    object_coordinates_rendering_path = os.path.join(obj_coords_output_path, 
+                                                            object_coordinates_rendering_path)
                     tiff.imsave(object_coordinates_rendering_path, object_coordinates)
 
                     # Save the original image in a cropped version as well
