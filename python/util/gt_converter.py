@@ -5,7 +5,7 @@ def convert_tless_gt(gt_path, images_path, image_extension, object_models_path, 
     import json
     from collections import OrderedDict
 
-    assert os.path.exists(gt_path), "Cam info file does not exist."
+    assert os.path.exists(gt_path), "Ground truth file does not exist."
     assert os.path.exists(images_path), "Images path does not exist."
     assert os.path.exists(object_models_path), "Object models path does not exist."
     assert image_extension in ['png', 'jpg', 'jpeg', 'tiff'], "Unkown image file format."

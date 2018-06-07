@@ -75,6 +75,9 @@ def inference(base_path, config):
         image = cv2.imread(os.path.join(images_path, image_path))
         segmentation_image_path = segmentation_image_paths[index]
         segmentation_image =cv2.imread(os.path.join(segmentation_images_path, segmentation_image_path))
+
+        # TODO: add check if segmentation image contains color
+
         image, frame = util.crop_image_on_segmentation_color(
                         image, segmentation_image, segmentation_color, return_frame=True)
         bbs.append(frame)

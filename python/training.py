@@ -80,6 +80,8 @@ def train(base_path, config):
                                             "File: {} with size {}".\
                                format(config.IMAGE_DIM, image, loaded_segmentation_image.shape))
 
+            # TODO: add check if segmentation image contains color
+            
             object_coordinate_image = obj_coordinate_renderings[i]
 
             image_path = os.path.join(images_path, image)
