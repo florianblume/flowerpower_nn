@@ -5,6 +5,7 @@ import cv2
 import numpy as np
 import math
 from collections import OrderedDict
+import tifffile as tiff
 
 import inference as inference_script
 import util.util as util
@@ -33,6 +34,7 @@ def ransac(prediction, imsize, cam_info):
                               None,
                               iterationsCount=100
     )
+
     reprojection = compute_reprojection(obj_coords, rvec, tvec, cam_info)
     error = np.mean(np.absolute(image_points - reprojection))
     print("Medium error for computed pose: {}.".format(error))

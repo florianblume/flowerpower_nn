@@ -225,11 +225,15 @@ def resnet_graph(input_image, architecture, stage5=False, batch_norm_trainable=T
     C3 = x = identity_block(x, 3, [128, 128, 512], stage=3, block='d', 
                                         batch_norm_trainable=batch_norm_trainable)
     # Stage 4
-    x = conv_block(x, 3, [256, 256, 1024], stage=4, block='a', 
+    # Different from original ResNet graph, as we do not want to increase receptive
+    # field size.
+    x = conv_block(x, 1, [256, 256, 1024], stage=4, block='a', strides=(1, 1),
                                         batch_norm_trainable=batch_norm_trainable)
+
     block_count = {"resnet35" : 0, "resnet50": 5, "resnet101": 22}[architecture]
     for i in range(block_count):
-        x = identity_block(x, 3, [256, 256, 1024], stage=4, block=chr(98 + i), 
+        # Kernel size is 1 to keep the recptive field size the same
+        x = identity_block(x, 1, [256, 256, 1024], stage=4, block=chr(98 + i), 
                                         batch_norm_trainable=batch_norm_trainable)
     C4 = x
     # Stage 5
@@ -501,7 +505,7 @@ class FlowerPowerCNN:
             batch_norm_trainable = config.BATCH_NORM_TRAINABLE
 
         C1, C2, C3, C4, C5 = resnet_graph(input_image, 
-                                          "resnet35", 
+                                          "resnet50", 
                                           stage5=False, 
                                           batch_norm_trainable=batch_norm_trainable)
 
@@ -518,9 +522,9 @@ class FlowerPowerCNN:
         # We use the layer C3 here, as with the given strides this results in a receptive field of 51
         # (see https://fomoro.com/tools/receptive-fields/ for details) which keeps the network towards
         # a patch-based approach instead of a global one
-        C3 = KL.Conv2D(256, (3, 3), padding="same", name="resnet_p1")(C3)
+        #C4 = KL.Conv2D(256, (3, 3), padding="same", name="resnet_p1")(C3)
 
-        obj_coord_image = detection_head_graph(C3, 1024)
+        obj_coord_image = detection_head_graph(C4, 1024)
 
         if mode == "training":
 
