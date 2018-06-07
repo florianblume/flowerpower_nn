@@ -199,53 +199,72 @@ def conv_block(input_tensor, kernel_size, filters, stage, block,
     return x
 
 
-def resnet_graph(input_image, architecture, stage5=False, batch_norm_trainable=True):
+def resnet_graph(input_image, architecture, batch_norm_trainable=True):
     assert architecture in ["resnet35", "resnet50", "resnet101"]
     # Stage 1
     x = KL.ZeroPadding2D((3, 3))(input_image)
-    x = KL.Conv2D(64, (7, 7), strides=(2, 2), name='conv1', use_bias=True)(x)
+
+    # All output sizes and receptive field sizes are for 500 as image dim
+
+    # Layer 1 - output: 250, receptive 7
+    x = KL.Conv2D(64, (7, 7), strides=(2, 2), name='conv1', use_bias=True)(x) 
+
     x = BatchNorm(axis=3, name='bn_conv1', trainable=batch_norm_trainable)(x)
     x = KL.Activation('relu')(x)
+    # Layer 2 - output: 124, receptive 11
     C1 = x = KL.MaxPooling2D((3, 3), strides=(2, 2), padding="same")(x)
     # Stage 2
+    # Layer 3 - 5 - output: 124, receptive 19
     x = conv_block(x, 3, [64, 64, 256], stage=2, block='a', strides=(1, 1), 
                                         batch_norm_trainable=batch_norm_trainable)
+    # Layer 6 - 8 - output: 124, receptive 27
     x = identity_block(x, 3, [64, 64, 256], stage=2, block='b', 
                                         batch_norm_trainable=batch_norm_trainable)
     ##############
+    # Layer 9 - 11 - output: 124, receptive 35
     C2 = x = identity_block(x, 3, [64, 64, 256], stage=2, block='c', 
                                         batch_norm_trainable=batch_norm_trainable)
     # Stage 3
+    # Layer 12 - 14 - output: 62, receptive 51
     x = conv_block(x, 3, [128, 128, 512], stage=3, block='a', 
                                         batch_norm_trainable=batch_norm_trainable)
-    x = identity_block(x, 3, [128, 128, 512], stage=3, block='b', 
+
+    # IMPORTANT: From here different Kernel sizes from the original ResNet, to
+    #            keep the receptive field size lower.
+
+    # Layer 15 - 17 - output: 62, receptive 51
+    x = identity_block(x, 1, [128, 128, 512], stage=3, block='b', 
                                         batch_norm_trainable=batch_norm_trainable)
-    x = identity_block(x, 3, [128, 128, 512], stage=3, block='c', 
+    # Layer 18 - 20 - output: 62, receptive 51
+    x = identity_block(x, 1, [128, 128, 512], stage=3, block='c', 
                                         batch_norm_trainable=batch_norm_trainable)
-    C3 = x = identity_block(x, 3, [128, 128, 512], stage=3, block='d', 
+    # Layer 21 - 23 - output: 62, receptive 51
+    C3 = x = identity_block(x, 1, [128, 128, 512], stage=3, block='d', 
                                         batch_norm_trainable=batch_norm_trainable)
     # Stage 4
-    # Different from original ResNet graph, as we do not want to increase receptive
-    # field size.
-    x = conv_block(x, 1, [256, 256, 1024], stage=4, block='a', strides=(1, 1),
+    # Layer 24 - 26 - output: 62, receptive 67
+    x = conv_block(x, 3, [256, 256, 1024], stage=4, block='a', strides=(1, 1),
                                         batch_norm_trainable=batch_norm_trainable)
 
     block_count = {"resnet35" : 0, "resnet50": 5, "resnet101": 22}[architecture]
     for i in range(block_count):
-        # Kernel size is 1 to keep the recptive field size the same
-        x = identity_block(x, 1, [256, 256, 1024], stage=4, block=chr(98 + i), 
+        x = identity_block(x, 3, [256, 256, 1024], stage=4, block=chr(98 + i), 
                                         batch_norm_trainable=batch_norm_trainable)
     C4 = x
+
     # Stage 5
-    if stage5:
-        x = conv_block(x, 3, [512, 512, 2048], stage=5, block='a', 
-                                        batch_norm_trainable=batch_norm_trainable)
-        x = identity_block(x, 3, [512, 512, 2048], stage=5, block='b', 
-                                        batch_norm_trainable=batch_norm_trainable)
-        C5 = x = identity_block(x, 3, [512, 512, 2048], stage=5, block='c', 
-                                        batch_norm_trainable=batch_norm_trainable)
-    else:
-        C5 = None
+
+    # The followin parameters are only for ResNet35
+    # Layer 27 - 29 - output: 62, receptive 67
+    x = conv_block(x, 1, [512, 512, 2048], stage=5, block='a', strides=(1, 1),
+                                    batch_norm_trainable=batch_norm_trainable)
+    # Layer 30 - 32 - output: 62, receptive 67
+    x = identity_block(x, 1, [512, 512, 2048], stage=5, block='b', 
+                                    batch_norm_trainable=batch_norm_trainable)
+    # Layer 33 - 35- output: 62, receptive 67
+    C5 = x = identity_block(x, 1, [512, 512, 2048], stage=5, block='c', 
+                                    batch_norm_trainable=batch_norm_trainable)
+
     return [C1, C2, C3, C4, C5]
 
 def detection_head_graph(feature_map, filters):
@@ -505,8 +524,7 @@ class FlowerPowerCNN:
             batch_norm_trainable = config.BATCH_NORM_TRAINABLE
 
         C1, C2, C3, C4, C5 = resnet_graph(input_image, 
-                                          "resnet50", 
-                                          stage5=False, 
+                                          "resnet35",
                                           batch_norm_trainable=batch_norm_trainable)
 
         """
@@ -524,7 +542,7 @@ class FlowerPowerCNN:
         # a patch-based approach instead of a global one
         #C4 = KL.Conv2D(256, (3, 3), padding="same", name="resnet_p1")(C3)
 
-        obj_coord_image = detection_head_graph(C4, 1024)
+        obj_coord_image = detection_head_graph(C5, 2048)
 
         if mode == "training":
 

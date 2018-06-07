@@ -205,30 +205,45 @@ def resnet_graph(input_image, architecture, stage5=False, batch_norm_trainable=T
     assert architecture in ["resnet35", "resnet50", "resnet101"]
     # Stage 1
     x = KL.ZeroPadding2D((3, 3))(input_image)
-    x = KL.Conv2D(64, (7, 7), strides=(2, 2), name='conv1', use_bias=True)(x)
+
+    # All output sizes and receptive field sizes are for 500 as image dim
+
+     # Layer 1 - output: 250, receptive 7
+    x = KL.Conv2D(64, (7, 7), strides=(2, 2), name='conv1', use_bias=True)(x) 
+
     x = BatchNorm(axis=3, name='bn_conv1', trainable=batch_norm_trainable)(x)
     x = KL.Activation('relu')(x)
+    # Layer 2 - output: 124, receptive 11
     C1 = x = KL.MaxPooling2D((3, 3), strides=(2, 2), padding="same")(x)
     # Stage 2
+    # Layer 3 - 5 - output: 124, receptive 19
     x = conv_block(x, 3, [64, 64, 256], stage=2, block='a', strides=(1, 1), 
                                         batch_norm_trainable=batch_norm_trainable)
+    # Layer 6 - 8 - output: 124, receptive 27
     x = identity_block(x, 3, [64, 64, 256], stage=2, block='b', 
                                         batch_norm_trainable=batch_norm_trainable)
     ##############
+    # Layer 9 - 11 - output: 124, receptive 35
     C2 = x = identity_block(x, 3, [64, 64, 256], stage=2, block='c', 
                                         batch_norm_trainable=batch_norm_trainable)
     # Stage 3
+    # Layer 12 - 14 - output: 62, receptive 51
     x = conv_block(x, 3, [128, 128, 512], stage=3, block='a', 
                                         batch_norm_trainable=batch_norm_trainable)
+    # Layer 15 - 17 - output: 62, receptive 67
     x = identity_block(x, 3, [128, 128, 512], stage=3, block='b', 
                                         batch_norm_trainable=batch_norm_trainable)
+    # Layer 18 - 20 - output: 62, receptive 83
     x = identity_block(x, 3, [128, 128, 512], stage=3, block='c', 
                                         batch_norm_trainable=batch_norm_trainable)
+    # Layer 21 - 23 - output: 62, receptive 99
     C3 = x = identity_block(x, 3, [128, 128, 512], stage=3, block='d', 
                                         batch_norm_trainable=batch_norm_trainable)
     # Stage 4
-    x = conv_block(x, 3, [256, 256, 1024], stage=4, block='a', 
+    # Layer 24 - 26 - output: 62, receptive 115
+    x = conv_block(x, 3, [256, 256, 1024], stage=4, block='a', strides=(1, 1),
                                         batch_norm_trainable=batch_norm_trainable)
+
     block_count = {"resnet35" : 0, "resnet50": 5, "resnet101": 22}[architecture]
     for i in range(block_count):
         x = identity_block(x, 3, [256, 256, 1024], stage=4, block=chr(98 + i), 
