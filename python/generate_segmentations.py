@@ -13,7 +13,7 @@ import renderer.renderer_segmentations_with_misc_objs as renderer
 import tifffile as tiff
 import matplotlib.pyplot as plt
 
-def generate_data(images_path, image_extension, object_model_path, ground_truth_path, 
+def generate_data(images_path, image_extension, object_models_path, object_model_name, ground_truth_path, 
                   cam_info_path, segmentation_color, output_path):
 
     print("Generating training data.")
@@ -55,7 +55,6 @@ def generate_data(images_path, image_extension, object_model_path, ground_truth_
             K = np.array(image_cam_info['K']).reshape(3, 3)
 
             gts_for_image = gt_data[image_filename]
-            object_model_name = os.path.basename(object_model_path)
             if len([gt for gt in gts_for_image if gt['obj'] == object_model_name]) > 1:
               print("Warning: found multiple ground truth entries for the object."
                     " Using only the first one.")
@@ -67,13 +66,11 @@ def generate_data(images_path, image_extension, object_model_path, ground_truth_
 
             for gt_entry in range(len(gts_for_image)):
                 gt = gts_for_image[gt_entry]
-                object_model = inout.load_ply(object_model_path)
                 # Rotation matrix was flattend to store it in a json
                 R = np.array(gt['R']).reshape(3, 3)
                 t = np.array(gt['t'])
-                obj_dict = {"obj" : object_model,
-                            "R" : R,
-                            "t" : t}
+                object_model = inout.load_ply(os.path.join(object_models_path, gt['obj']))
+                obj_dict = {"obj" : object_model, "R" : R, "t" : t}
                 if object_model_name == gt['obj'] and desired_obj_model is None:
                   # We found the first entry for our object model, i.e. this is the one
                   # we want to render a segmentation mask for
@@ -122,6 +119,7 @@ def generate_data(images_path, image_extension, object_model_path, ground_truth_
             K[1][2] = K[1][2] - crop_frame[0]
             image_cam_info['K'] = K.flatten().tolist()
             new_cam_info[image_filename] = image_cam_info
+
         json.dump(OrderedDict(sorted(new_cam_info.items(), key=lambda t: t[0])), cam_info_output_file)
 
 if __name__ == '__main__':
@@ -142,7 +140,8 @@ if __name__ == '__main__':
         config = json.load(config_file)
         generate_data(config["IMAGES_PATH"], 
                   config["IMAGE_EXTENSION"], 
-                  config["OBJECT_MODEL_PATH"],
+                  config["OBJECT_MODELS_PATH"],
+                  config["OBJECT_MODEL"],
                   config["GROUND_TRUTH_PATH"],
                   config["CAM_INFO_PATH"],
                   config["SEGMENTATION_COLOR"],
