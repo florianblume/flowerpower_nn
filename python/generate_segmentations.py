@@ -96,7 +96,7 @@ def generate_data(images_path, image_extension, object_model_path, ground_truth_
 
             # Render the object coordinates ground truth and store it as tiff image
             segmentation = renderer.render(desired_obj_model, 
-                                         [], 
+                                         misc_obj_models, 
                                          (image.shape[0], image.shape[1]), 
                                          K,
                                          segmentation_color=segmentation_color)

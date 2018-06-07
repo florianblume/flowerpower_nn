@@ -16,6 +16,11 @@ def inference(base_path, config):
     segmentation_images_path = config.SEGMENTATION_IMAGES_PATH
     output_path = os.path.join(base_path, config.OUTPUT_PATH)
 
+    if os.path.exists(output_path):
+        shutil.rmtree(output_path)
+
+    os.makedirs(output_path)
+
     for i, result in enumerate(results):
         image_filename = result["image"]
         image_filename_without_extension = os.path.splitext(image_filename)[0]

@@ -122,16 +122,14 @@ class _Canvas(app.Canvas):
         self.ts = [model_to_render['t']]
 
         # Create buffers
-        self.vertex_buffers = gloo.VertexBuffer(model_to_render['obj']['vertices'])
-        self.index_buffers = gloo.IndexBuffer(model_to_render['obj']['faces'].flatten().astype(np.uint32))
+        self.vertex_buffers = [gloo.VertexBuffer(model_to_render['obj']['vertices'])]
+        self.index_buffers = [gloo.IndexBuffer(model_to_render['obj']['faces'].flatten().astype(np.uint32))]
 
-        """
         for model in misc_models:
             self.vertex_buffers.append(gloo.VertexBuffer(model['obj']['vertices']))
             self.index_buffers.append(gloo.IndexBuffer(model['obj']['faces'].flatten().astype(np.uint32)))
             self.Rs.append(model['R'])
             self.ts.append(model['t'])
-        """
 
         # We manually draw the hidden canvas
         self.update()
@@ -142,20 +140,6 @@ class _Canvas(app.Canvas):
 
     def draw_segmentation(self):
         program = gloo.Program(_segmentation_vertex_code, _segmentation_fragment_code)
-
-        index = 0
-
-        # View matrix (transforming also the coordinate system from OpenCV to
-        # OpenGL camera space)
-        self.mat_view = np.eye(4, dtype=np.float32) # From world space to eye space
-        self.mat_view[:3, :3], self.mat_view[:3, 3] = self.Rs[index], self.ts[index].squeeze()
-        yz_flip = np.eye(4, dtype=np.float32)
-        yz_flip[1, 1], yz_flip[2, 2] = -1, -1
-        self.mat_view = yz_flip.dot(self.mat_view) # OpenCV to OpenGL camera system
-        self.mat_view = self.mat_view.T # OpenGL expects column-wise matrix format
-        program['u_mvp'] = _compute_model_view_proj(self.mat_model, self.mat_view, self.mat_proj)
-
-        program.bind(self.vertex_buffers)
 
         # Texture where we render the scene
         render_tex = gloo.Texture2D(shape=self.shape + (4,))
@@ -170,12 +154,25 @@ class _Canvas(app.Canvas):
             gloo.clear(color=True, depth=True)
             gloo.set_viewport(0, 0, *self.size)
 
-            if index == 0:
-                # The first object is drawn with the segmentation color
-                program['a_color'] = self.segmentation_color
-            else:
-                program['a_color'] = [0, 0, 0]
-            program.draw('triangles', self.index_buffers)
+            for index in range(len(self.vertex_buffers)):
+                # View matrix (transforming also the coordinate system from OpenCV to
+                # OpenGL camera space)
+                self.mat_view = np.eye(4, dtype=np.float32) # From world space to eye space
+                self.mat_view[:3, :3], self.mat_view[:3, 3] = self.Rs[index], self.ts[index].squeeze()
+                yz_flip = np.eye(4, dtype=np.float32)
+                yz_flip[1, 1], yz_flip[2, 2] = -1, -1
+                self.mat_view = yz_flip.dot(self.mat_view) # OpenCV to OpenGL camera system
+                self.mat_view = self.mat_view.T # OpenGL expects column-wise matrix format
+                program['u_mvp'] = _compute_model_view_proj(self.mat_model, self.mat_view, self.mat_proj)
+
+                program.bind(self.vertex_buffers[index])
+
+                if index == 0:
+                    # The first object is drawn with the segmentation color
+                    program['a_color'] = self.segmentation_color
+                else:
+                    program['a_color'] = [0, 0, 0]
+                program.draw('triangles', self.index_buffers[index])
 
             # Retrieve the contents of the FBO texture
             self.segmentation = gloo.read_pixels((0, 0, self.size[0], self.size[1]))[:, :, :3]

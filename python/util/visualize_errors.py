@@ -2,6 +2,7 @@ import tifffile as tiff
 import cv2
 import numpy as np
 import os
+import shutil
 
 import util
 
@@ -11,8 +12,10 @@ def visualize_errors(gt_images_path, prediction_images_path, output_path, output
     prediction_images = util.get_files_at_path_of_extensions(prediction_images_path, [".tiff"])
     util.sort_list_by_num_in_string_entries(prediction_images)
 
-    if not os.path.exists(output_path):
-        os.makedirs(output_path)
+    if os.path.exists(output_path):
+        shutil.rmtree(output_path)
+        
+    os.makedirs(output_path)
 
     # The threshold to use as maximum (i.e. 255 in RGB) because using the
     # maximum in the prediction itself might make smaller errors vanish
