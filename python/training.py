@@ -76,8 +76,9 @@ def train(base_path, config):
             if loaded_segmentation_image.shape[0] > config.IMAGE_DIM or \
                loaded_segmentation_image.shape[1] > config.IMAGE_DIM:
                 raise Exception(
-                    "Image dimension exceeds image dim specified in config. File: {}".\
-                                    format(image))
+                    "Image dimension exceeds image dim {} specified in config."
+                                            "File: {} with size {}".\
+                               format(config.IMAGE_DIM, image, loaded_segmentation_image.shape))
 
             object_coordinate_image = obj_coordinate_renderings[i]
 

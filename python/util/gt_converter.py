@@ -3,6 +3,7 @@ def convert_tless_gt(gt_path, images_path, image_extension, object_models_path, 
     import tless_inout as inout
     import util
     import json
+    from collections import OrderedDict
 
     assert os.path.exists(gt_path), "Cam info file does not exist."
     assert os.path.exists(images_path), "Images path does not exist."
@@ -13,7 +14,7 @@ def convert_tless_gt(gt_path, images_path, image_extension, object_models_path, 
     with open(output_path, "w") as json_gt:
 
         yml_gt = inout.load_gt(gt_path)
-        converted = {}
+        converted = OrderedDict()
 
         image_filenames = util.get_files_at_path_of_extensions(images_path, [image_extension])
         util.sort_list_by_num_in_string_entries(image_filenames)
