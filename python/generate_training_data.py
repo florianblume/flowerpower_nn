@@ -79,19 +79,13 @@ def generate_data(images_path, image_extension, object_model_path, ground_truth_
 
                     # Render the segmentation image first, to crop all images to the segmentation mask
                     segmentation_rendering = renderings[renderer.RENDERING_MODE_SEGMENTATION]
-                    # On the borders of the object the segmentation color is not 255 but above 0
-                    segmentation_rendering_indices = segmentation_rendering > 0
-                    segmentation_rendering_indices = np.all(segmentation_rendering_indices == True, axis=2)
-                    segmentation_rendering[segmentation_rendering_indices] = segmentation_color
                     # We need to write the crops into the new camera info file because the principal points 
                     # changes when we crop the image
                     cropped_segmentation, crop_frame = util.crop_image_on_segmentation_color(
                                                                   segmentation_rendering, 
                                                                   segmentation_rendering,
                                                                   segmentation_color, return_frame=True)
-                    segmentation_rendering_path = "segmentation_" + 
-                                                  image_filename_without_extension + 
-                                                  ".png"
+                    segmentation_rendering_path = "segmentation_" + image_filename_without_extension + ".png"
                     segmentation_rendering_path = os.path.join(segmentations_output_path, 
                                                             segmentation_rendering_path)
                     cv2.imwrite(segmentation_rendering_path, cropped_segmentation)
@@ -104,9 +98,7 @@ def generate_data(images_path, image_extension, object_model_path, ground_truth_
                                                                     object_coordinates_rendering, 
                                                                     segmentation_rendering,
                                                                     segmentation_color)
-                    object_coordinates_rendering_path = "obj_coords_" + 
-                                                        image_filename_without_extension + 
-                                                        ".tiff"
+                    object_coordinates_rendering_path = "obj_coords_" + image_filename_without_extension + ".tiff"
                     object_coordinates_rendering_path = os.path.join(obj_coords_output_path, 
                                                             object_coordinates_rendering_path)
                     tiff.imsave(object_coordinates_rendering_path, object_coordinates)
