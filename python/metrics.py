@@ -112,7 +112,7 @@ def calculate_metrics(gt_images_path, pred_images_path, gt_path, obj,
         mean, median = get_summary(mean_errors, inliers, angle_errors, distance_errors)
         results['mean'] = mean
         results['median'] = median
-        print("Result store at {}.".format(output_file))
+        print("Result stored at {}.".format(output_file))
         json.dump(results, output)
 
 if __name__ == '__main__':

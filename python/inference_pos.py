@@ -35,9 +35,6 @@ def ransac(prediction, imsize, cam_info):
                               iterationsCount=100
     )
 
-    reprojection = compute_reprojection(obj_coords, rvec, tvec, cam_info)
-    error = np.mean(np.absolute(image_points - reprojection))
-    print("Medium error for computed pose: {}.".format(error))
     return retval, rvec, tvec
 
 def inference(base_path, config):

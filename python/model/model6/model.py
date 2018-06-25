@@ -208,26 +208,26 @@ def resnet_graph(input_image, architecture, batch_norm_trainable=True):
 
     # Layer 1 - output: 250, receptive 7
     x = KL.Conv2D(64, (7, 7), strides=(2, 2), name='conv1', use_bias=True)(x) 
-    x = KL.Dropout(0.1)(x)
+    x = KL.Dropout(0.2)(x)
     #x = BatchNorm(axis=3, name='bn_conv1', trainable=batch_norm_trainable)(x)
     x = KL.Activation('relu')(x)
     # Layer 2 - output: 248, receptive 11
     C1 = x = KL.MaxPooling2D((3, 3), strides=(1, 1), padding="same")(x)
-    x = KL.Dropout(0.1)(x)
+    x = KL.Dropout(0.2)(x)
     # Stage 2
     # Layer 3 - 5 - output: 248, receptive 15
     x = conv_block(x, 3, [64, 64, 256], stage=2, block='a', strides=(1, 1), 
                                         batch_norm_trainable=batch_norm_trainable)
-    x = KL.Dropout(0.1)(x)
+    x = KL.Dropout(0.2)(x)
     # Layer 6 - 8 - output: 248, receptive 15
     x = identity_block(x, 1, [64, 64, 256], stage=2, block='b', 
                                         batch_norm_trainable=batch_norm_trainable)
-    x = KL.Dropout(0.1)(x)
+    x = KL.Dropout(0.2)(x)
     ##############
     # Layer 9 - 11 - output: 248, receptive 19
     C2 = x = identity_block(x, 3, [64, 64, 256], stage=2, block='c', 
                                         batch_norm_trainable=batch_norm_trainable)
-    x = KL.Dropout(0.1)(x)
+    x = KL.Dropout(0.2)(x)
     # Stage 3
     # Layer 12 - 14 - output: 124, receptive 19
     x = conv_block(x, 3, [128, 128, 512], stage=3, block='a', 

@@ -1,1 +1,2 @@
 This model uses the Adam optimizer and L2 for weight regularization.
+C3 is final stage.
