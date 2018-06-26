@@ -136,7 +136,8 @@ if __name__ == '__main__':
                         help="The path to the predicted poses file.")
     parser.add_argument("--obj",
                         required=True,
-                        help="The name of the object model to calculate the metrics for.")
+                        help="The name of the object model to calculate the metrics for."
+                                " IMPORTANT: include the extension.")
     parser.add_argument("--image_extension",
                         required=True,
                         help="The extension of the original (i.e. the photographs) images."

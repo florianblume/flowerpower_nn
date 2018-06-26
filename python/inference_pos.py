@@ -35,6 +35,10 @@ def ransac(prediction, imsize, cam_info):
                               iterationsCount=100
     )
 
+    # If z value is negative we need to flip the translation vector
+    if tvec[2] < 0:
+        tvec = tvec * -1
+
     return retval, rvec, tvec
 
 def inference(base_path, config):
