@@ -10,7 +10,7 @@ def gather_summary(exp_path, output_path):
             model_path = os.path.join(exp_path, model)
             experiments = [name for name in os.listdir(model_path) if os.path.isdir(os.path.join(model_path, name))]
             for experiment in experiments:
-                key = model + "/" + experiment
+                key = model + "-" + experiment
                 output_data[key] = {}
                 metrics_path = os.path.join(model_path, experiment, "inference_val", "metrics.json")
                 with open(metrics_path, "r") as metrics_file:
