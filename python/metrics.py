@@ -15,7 +15,7 @@ def get_summary(mean_errors, inliers, angle_errors, distance_errors):
     angle_errors.sort()
     distance_errors.sort()
     mean = {'pixel_error' : np.mean(mean_errors).astype(np.float64),
-            'inlier' : np.mean(inliers),
+            'inliers' : np.mean(inliers),
             'angle_error' : np.mean(angle_errors).astype(np.float64),
             'distance_error' : np.mean(distance_errors)}
     len_mean_errors = len(mean_errors)
