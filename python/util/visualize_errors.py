@@ -17,7 +17,7 @@ def visualize_errors(gt_images_path, prediction_images_path, output_path, output
     # The threshold to use as maximum (i.e. 255 in RGB) because using the
     # maximum in the prediction itself might make smaller errors vanish
     # if the maximum is a lot larger than the rest of the coordinates.
-    coord_threshold = 2
+    coord_threshold = 5
     for index in range(len(prediction_images)):
         prediction_image = prediction_images[index]
         if not prediction_image in gt_images:
