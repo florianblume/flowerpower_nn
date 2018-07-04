@@ -82,6 +82,8 @@ def calculate_metrics(gt_images_path, pred_images_path, gt_path, obj,
                 inliers.append(inlier_count)
                 result['pixel_error'] = mean.astype(np.float64)
                 result['inliers'] = inlier_count
+            else:
+                print("Could not find corresponding groundtruth object coordinates for {}.".format(pred_image_file))
 
             # We can still calculate the error of the pose even if we do not have
             # the ground truth object coordiantes
@@ -90,6 +92,7 @@ def calculate_metrics(gt_images_path, pred_images_path, gt_path, obj,
             original_image_file = original_image_file + "." + image_extension
             if original_image_file in gt_data:
                 gt_entry_for_image = gt_data[original_image_file]
+                gt_entry_found = False
                 for gt_entry in gt_entry_for_image:
                     if gt_entry['obj'] == obj:
                         pred_entry = next((x for x in pred_data[original_image_file] if x['obj'] == obj), None)
@@ -107,6 +110,11 @@ def calculate_metrics(gt_images_path, pred_images_path, gt_path, obj,
                         distance_errors.append(distance)
                         result['angle_error'] = angle
                         result['distance_error'] = distance
+                        gt_entry_found = True
+                if not gt_entry_found:
+                    print("Could not find corresponding ground truth entry for {}.".format(original_image_file))
+            else:
+                print("Could not find corresponding ground truth entry for {}.".format(original_image_file))
 
             results['images'][original_image_file] = result
         mean, median = get_summary(mean_errors, inliers, angle_errors, distance_errors)
