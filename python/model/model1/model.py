@@ -201,8 +201,7 @@ def conv_block(input_tensor, kernel_size, filters, stage, block,
     return x
 
 
-def resnet_graph(input_image, architecture, stage5=False, batch_norm_trainable=True):
-    assert architecture in ["resnet35", "resnet50", "resnet101"]
+def resnet_graph(input_image, batch_norm_trainable=True):
     # Stage 1
     x = KL.ZeroPadding2D((3, 3))(input_image)
 
@@ -239,27 +238,7 @@ def resnet_graph(input_image, architecture, stage5=False, batch_norm_trainable=T
     # Layer 21 - 23 - output: 62, receptive 99
     C3 = x = identity_block(x, 3, [128, 128, 512], stage=3, block='d', 
                                         batch_norm_trainable=batch_norm_trainable)
-    # Stage 4
-    # Layer 24 - 26 - output: 62, receptive 115
-    x = conv_block(x, 3, [256, 256, 1024], stage=4, block='a', strides=(1, 1),
-                                        batch_norm_trainable=batch_norm_trainable)
-
-    block_count = {"resnet35" : 0, "resnet50": 5, "resnet101": 22}[architecture]
-    for i in range(block_count):
-        x = identity_block(x, 3, [256, 256, 1024], stage=4, block=chr(98 + i), 
-                                        batch_norm_trainable=batch_norm_trainable)
-    C4 = x
-    # Stage 5
-    if stage5:
-        x = conv_block(x, 3, [512, 512, 2048], stage=5, block='a', 
-                                        batch_norm_trainable=batch_norm_trainable)
-        x = identity_block(x, 3, [512, 512, 2048], stage=5, block='b', 
-                                        batch_norm_trainable=batch_norm_trainable)
-        C5 = x = identity_block(x, 3, [512, 512, 2048], stage=5, block='c', 
-                                        batch_norm_trainable=batch_norm_trainable)
-    else:
-        C5 = None
-    return [C1, C2, C3, C4, C5]
+    return C3
 
 def detection_head_graph(feature_map, filters):
     """Builds the computation graph of the final stage of the network that produces
@@ -517,20 +496,8 @@ class FlowerPowerCNN:
         if mode == "training":
             batch_norm_trainable = config.BATCH_NORM_TRAINABLE
 
-        C1, C2, C3, C4, C5 = resnet_graph(input_image, 
-                                          "resnet35", 
-                                          stage5=False, 
-                                          batch_norm_trainable=batch_norm_trainable)
-
-        """
-        P3 = KL.Conv2D(256, (1, 1), name='fpn_c3p3')(C3)
-        P2 = KL.Add(name="fpn_p3add")([
-            KL.UpSampling2D(size=(2, 2), name="fpn_p3upsampled")(P3),
-            KL.Conv2D(256, (1, 1), name='resnet_c2p2')(C2)])
-        P1 = KL.Add(name="fpn_p2add")([
-            KL.UpSampling2D(size=(2, 2), name="fpn_p2upsampled")(P2),
-            KL.Conv2D(256, (1, 1), name='fpn_c1p1')(C1)])
-        """
+        C3 = resnet_graph(input_image, 
+                          batch_norm_trainable=batch_norm_trainable)
 
         # We use the layer C3 here, as with the given strides this results in a receptive field of 51
         # (see https://fomoro.com/tools/receptive-fields/ for details) which keeps the network towards
