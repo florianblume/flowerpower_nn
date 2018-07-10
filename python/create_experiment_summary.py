@@ -1,22 +1,33 @@
 import os
 import json
+from util import util
 from collections import OrderedDict
 
 def gather_summary(exp_path, output_path):
     with open(output_path, "w") as output_file:
         output_data = OrderedDict()
         models = [name for name in os.listdir(exp_path) if os.path.isdir(os.path.join(exp_path, name))]
+        util.sort_list_by_num_in_string_entries(models)
         for model in models:
+            output_data[model] = OrderedDict()
             model_path = os.path.join(exp_path, model)
-            experiments = [name for name in os.listdir(model_path) if os.path.isdir(os.path.join(model_path, name))]
-            for experiment in experiments:
-                key = model + "-" + experiment
-                output_data[key] = {}
-                metrics_path = os.path.join(model_path, experiment, "inference_val", "metrics.json")
-                with open(metrics_path, "r") as metrics_file:
-                    metrics_data = json.load(metrics_file)
-                    output_data[key]["mean"] = metrics_data["mean"]
-                    output_data[key]["median"] = metrics_data["median"]
+            object_models = [name for name in os.listdir(model_path) if os.path.isdir(os.path.join(model_path, name))]
+            util.sort_list_by_num_in_string_entries(object_models)
+            for object_model in object_models:
+                output_data[model][object_model] = OrderedDict()
+                object_model_path = os.path.join(model_path, object_model)
+                experiments = [name for name in os.listdir(object_model_path) if os.path.isdir(os.path.join(object_model_path, name))]
+                util.sort_list_by_num_in_string_entries(experiments)
+                for experiment in experiments:
+                    output_data[model][object_model][experiment] = OrderedDict()
+                    metrics_path = os.path.join(object_model_path, experiment, "inference_val", "metrics.json")
+                    if os.path.exists(metrics_path):
+                        with open(metrics_path, "r") as metrics_file:
+                            metrics_data = json.load(metrics_file)
+                            output_data[model][object_model][experiment]["mean"] = metrics_data["mean"]
+                            output_data[model][object_model][experiment]["median"] = metrics_data["median"]
+                    else:
+                        print("No metrics.json found for {}.".format(model + " - " + object_model + " - " + experiment))
         json.dump(output_data, output_file)
 
 
