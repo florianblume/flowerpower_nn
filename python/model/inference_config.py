@@ -48,3 +48,9 @@ class InferenceConfig(config.Config):
     # The number of RANSAC iterations to compute the final pose
     # per image
     RANSAC_ITERATIONS = 10
+
+    # How to merge the new poses with the existing ones in the output file
+    # overwrite = remove ALL poses from the file
+    # append = append pose to the existing poses of the image
+    # replace = replaces all poses of the specified object on the respective image with the infered one
+    MERGE_MODE = "overwrite"

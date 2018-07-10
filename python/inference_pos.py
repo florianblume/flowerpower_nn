@@ -45,13 +45,21 @@ def inference(base_path, config):
 
     cam_info_path = config.CAM_INFO_PATH
     object_model_path = config.OBJECT_MODEL_PATH
+    merge_mode = config.MERGE_MODE
     output_file = os.path.join(base_path, config.OUTPUT_FILE)
+
+    assert merge_mode in ["overwrite", "append", "replace"], "Unkown merge mode"
 
     assert os.path.exists(cam_info_path), \
             "The camera info file {} does not exist.".format(cam_info_path)
 
     results = inference_script.inference(base_path, config)
-    converted_results = OrderedDict()
+
+    if merge_mode == "append" or merge_mode == "replace":
+        with open(output_file, "r") as json_file:
+            converted_results = json.load(json_file)
+    else:
+        converted_results = OrderedDict()
 
     with open(cam_info_path, "r") as cam_info_file:
         cam_info = json.load(cam_info_file)
@@ -62,9 +70,18 @@ def inference(base_path, config):
             image = cv2.imread(os.path.join(config.IMAGES_PATH, key))
             pose = ransac(prediction, image.shape, cam_info[key])
             rotation_matrix = cv2.Rodrigues(pose[1])[0]
-            # Translation is inverted somehow
             translation_vector = pose[2]
-            converted_results[key] = [{"R" : rotation_matrix.flatten().tolist(), 
+            if merge_mode == "append" and key in converted_results:
+                # Only when the user wants to append the pose and there already are some
+                # poses for the image
+                converted_results[key].append({"R" : rotation_matrix.flatten().tolist(), 
+                                    "t" : translation_vector.flatten().tolist(), 
+                                    "bb" : result["bb"].flatten().tolist(), 
+                                    "obj" : os.path.basename(object_model_path)})
+            else:
+                # For overwrite and replace we replace all the content whether
+                # it existed or not
+                converted_results[key] = [{"R" : rotation_matrix.flatten().tolist(), 
                                     "t" : translation_vector.flatten().tolist(), 
                                     "bb" : result["bb"].flatten().tolist(), 
                                     "obj" : os.path.basename(object_model_path)}]
