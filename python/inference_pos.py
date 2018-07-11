@@ -57,7 +57,11 @@ def inference(base_path, config):
 
     if merge_mode == "append" or merge_mode == "replace":
         with open(output_file, "r") as json_file:
-            converted_results = json.load(json_file)
+            try:
+                converted_results = json.load(json_file)
+            except ValueError:
+                print("No existing poses loaded because the JSON file could not be read. Overwriting the file.")
+                converted_results = OrderedDict()
     else:
         converted_results = OrderedDict()
 
