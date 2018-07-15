@@ -16,7 +16,7 @@ import keras.initializers as KI
 import keras.engine as KE
 import keras.models as KM
 
-from .. import model_util
+from . import model_util
 
 # Requires TensorFlow 1.3+ and Keras 2.0.8+.
 from distutils.version import LooseVersion
@@ -47,45 +47,9 @@ class VisualizePredictionCallback(keras.callbacks.Callback):
         self.prediction_examples = prediction_examples
 
     def on_epoch_end(self, epoch, logs={}):
-        output_path = os.path.join(self.output_path, "example_predictions", "epoch_{}".format(epoch))
-
-        if not os.path.exists(output_path):
-            os.makedirs(output_path)
-
-        print(
-            "Performing sample prediction with model of epoch {}. Results stored at {}.".\
-                    format(epoch, output_path))
-
-        for example in self.prediction_examples:
-
-            image = example['image']
-            segmentation = example['segmentation']
-
-            image_name = os.path.splitext(os.path.basename(image))[0]
-
-            file_path = os.path.join(output_path, "epoch_{}_image_{}.tiff".format(epoch, image_name))
-
-            loaded_image = cv2.imread(image)
-            scaled_padded_image, scale, image_padding = model_util.resize_and_pad_image(
-                                                                        loaded_image, 
-                                                                        self.shape)
-            segmentation_image = cv2.imread(segmentation)
-            padded_segmentation_image, seg_and_coord_padding = \
-                                        model_util.pad_image(segmentation_image, self.shape)
-
-            # Passing segmentation image as placeholder for the gt object coord image
-            # - it is not actually needed for prediction but the model expects the third image
-            # as it is build for training
-
-            """
-            prediction, loss = self.model.predict([np.array([scaled_padded_image]), 
-                                                   np.array([image_padding]),
-                                                   np.array([padded_segmentation_image]), 
-                                                   np.array([padded_segmentation_image]),
-                                                   np.array([seg_and_coord_padding])])
-            tiff.imsave(file_path, prediction.astype(np.float16))
-            """
-
+        # Live example predictions is not working with the new model anymore - but
+        # as model works correctly not really necessary
+        pass
 
 ############################################################
 #  Utility Functions
@@ -102,289 +66,6 @@ def log(text, array=None):
             array.min() if array.size else "",
             array.max() if array.size else ""))
     print(text)
-
-
-class BatchNorm(KL.BatchNormalization):
-    """Batch Normalization class. Subclasses the Keras BN class and
-    hardcodes training=False so the BN layer doesn't update
-    during training.
-
-    Batch normalization has a negative effect on training if batches are small
-    so we disable it here.
-    """
-
-    trainable = True
-
-    def __init__(self, axis, name, trainable=True):
-        super().__init__(axis=axis, name=name)
-        self.trainable = trainable
-
-    def call(self, inputs, training=True):
-        return super(self.__class__, self).call(inputs, training=self.trainable)
-
-############################################################
-#  Resnet Graph
-############################################################
-
-# Code adopted from:
-# https://github.com/fchollet/deep-learning-models/blob/master/resnet50.py
-
-def identity_block(input_tensor, kernel_size, filters, stage, block,
-                   use_bias=True, batch_norm_trainable=True):
-    """The identity_block is the block that has no conv layer at shortcut
-    # Arguments
-        input_tensor: input tensor
-        kernel_size: defualt 3, the kernel size of middle conv layer at main path
-        filters: list of integers, the nb_filters of 3 conv layer at main path
-        stage: integer, current stage label, used for generating layer names
-        block: 'a','b'..., current block label, used for generating layer names
-    """
-    nb_filter1, nb_filter2, nb_filter3 = filters
-    conv_name_base = 'res' + str(stage) + block + '_branch'
-    bn_name_base = 'bn' + str(stage) + block + '_branch'
-
-    x = KL.Conv2D(nb_filter1, (1, 1), name=conv_name_base + '2a',
-                  use_bias=use_bias)(input_tensor)
-    x = BatchNorm(axis=3, name=bn_name_base + '2a', trainable=batch_norm_trainable)(x)
-    x = KL.Activation('relu')(x)
-
-    x = KL.Conv2D(nb_filter2, (kernel_size, kernel_size), padding='same',
-                  name=conv_name_base + '2b', use_bias=use_bias)(x)
-    x = BatchNorm(axis=3, name=bn_name_base + '2b', trainable=batch_norm_trainable)(x)
-    x = KL.Activation('relu')(x)
-
-    x = KL.Conv2D(nb_filter3, (1, 1), name=conv_name_base + '2c',
-                  use_bias=use_bias)(x)
-    x = BatchNorm(axis=3, name=bn_name_base + '2c', trainable=batch_norm_trainable)(x)
-
-    x = KL.Add()([x, input_tensor])
-    x = KL.Activation('relu', name='res' + str(stage) + block + '_out')(x)
-    return x
-
-
-def conv_block(input_tensor, kernel_size, filters, stage, block,
-               strides=(2, 2), use_bias=True, batch_norm_trainable=True):
-    """conv_block is the block that has a conv layer at shortcut
-    # Arguments
-        input_tensor: input tensor
-        kernel_size: defualt 3, the kernel size of middle conv layer at main path
-        filters: list of integers, the nb_filters of 3 conv layer at main path
-        stage: integer, current stage label, used for generating layer names
-        block: 'a','b'..., current block label, used for generating layer names
-    Note that from stage 3, the first conv layer at main path is with subsample=(2,2)
-    And the shortcut should have subsample=(2,2) as well
-    """
-    nb_filter1, nb_filter2, nb_filter3 = filters
-    conv_name_base = 'res' + str(stage) + block + '_branch'
-    bn_name_base = 'bn' + str(stage) + block + '_branch'
-
-    x = KL.Conv2D(nb_filter1, (1, 1), strides=strides,
-                  name=conv_name_base + '2a', use_bias=use_bias)(input_tensor)
-    x = BatchNorm(axis=3, name=bn_name_base + '2a', trainable=batch_norm_trainable)(x)
-    x = KL.Activation('relu')(x)
-
-    x = KL.Conv2D(nb_filter2, (kernel_size, kernel_size), padding='same',
-                  name=conv_name_base + '2b', use_bias=use_bias)(x)
-    x = BatchNorm(axis=3, name=bn_name_base + '2b', trainable=batch_norm_trainable)(x)
-    x = KL.Activation('relu')(x)
-
-    x = KL.Conv2D(nb_filter3, (1, 1), name=conv_name_base +
-                  '2c', use_bias=use_bias)(x)
-    x = BatchNorm(axis=3, name=bn_name_base + '2c', trainable=batch_norm_trainable)(x)
-
-    shortcut = KL.Conv2D(nb_filter3, (1, 1), strides=strides,
-                         name=conv_name_base + '1', use_bias=use_bias)(input_tensor)
-    shortcut = BatchNorm(axis=3, name=bn_name_base + '1', trainable=batch_norm_trainable)(shortcut)
-
-    x = KL.Add()([x, shortcut])
-    x = KL.Activation('relu', name='res' + str(stage) + block + '_out')(x)
-    return x
-
-
-def resnet_graph(input_image, batch_norm_trainable=True):
-    # Stage 1
-    x = KL.ZeroPadding2D((3, 3))(input_image)
-
-    # All output sizes and receptive field sizes are for 500 as image dim
-
-     # Layer 1 - output: 250, receptive 7
-    x = KL.Conv2D(64, (7, 7), strides=(2, 2), name='conv1', use_bias=True)(x) 
-
-    x = BatchNorm(axis=3, name='bn_conv1', trainable=batch_norm_trainable)(x)
-    x = KL.Activation('relu')(x)
-    # Layer 2 - output: 124, receptive 11
-    C1 = x = KL.MaxPooling2D((3, 3), strides=(2, 2), padding="same")(x)
-    # Stage 2
-    # Layer 3 - 5 - output: 124, receptive 19
-    x = conv_block(x, 3, [64, 64, 256], stage=2, block='a', strides=(1, 1), 
-                                        batch_norm_trainable=batch_norm_trainable)
-    # Layer 6 - 8 - output: 124, receptive 27
-    x = identity_block(x, 3, [64, 64, 256], stage=2, block='b', 
-                                        batch_norm_trainable=batch_norm_trainable)
-    ##############
-    # Layer 9 - 11 - output: 124, receptive 35
-    C2 = x = identity_block(x, 3, [64, 64, 256], stage=2, block='c', 
-                                        batch_norm_trainable=batch_norm_trainable)
-    # Stage 3
-    # Layer 12 - 14 - output: 62, receptive 51
-    x = conv_block(x, 3, [128, 128, 512], stage=3, block='a', 
-                                        batch_norm_trainable=batch_norm_trainable)
-    # Layer 15 - 17 - output: 62, receptive 67
-    x = identity_block(x, 3, [128, 128, 512], stage=3, block='b', 
-                                        batch_norm_trainable=batch_norm_trainable)
-    # Layer 18 - 20 - output: 62, receptive 83
-    x = identity_block(x, 3, [128, 128, 512], stage=3, block='c', 
-                                        batch_norm_trainable=batch_norm_trainable)
-    # Layer 21 - 23 - output: 62, receptive 99
-    C3 = x = identity_block(x, 3, [128, 128, 512], stage=3, block='d', 
-                                        batch_norm_trainable=batch_norm_trainable)
-    return C3
-
-def detection_head_graph(feature_map, filters):
-    """Builds the computation graph of the final stage of the network that produces
-    the object coordinate predictions.
-
-    Inputs:
-        feature_map: backbone features [batch, height, width, depth]
-        filters: the size of the output channels
-
-    Returns:
-        prediction object coordinates: [batch, height, width, 3]
-    """
-    x = KL.Conv2D(filters, (1, 1), strides=(1, 1),
-                  name="detection_head_" + "stage_1", use_bias=True, padding="same")(feature_map)
-    x = KL.Activation('relu', name='detection_head_stage_1_activation')(x)
-    x = KL.Conv2D(filters, (1, 1), strides=(1, 1),
-                  name="detection_head_" + "stage_2", use_bias=True, padding="same")(x)
-    x = KL.Activation('relu', name='detection_head_stage_2_activation')(x)
-    x = KL.Conv2D(3, (1, 1), strides=(1, 1),
-                  name="detection_head_" + "final_stage", use_bias=True, padding="same")(x)
-    return x
-
-def compute_indices_graph(original_shape, target_shape):
-    """ Computes the indices.
-
-    input_shapes:  [batch, (height, width)]. The un-padded shapes of the input images.
-    outupt_shapes: [batch, (height, width)]. The un-padded shapes of the output images.
-    """
-
-    # If we use an int step size, the offset error distributes when slicing resulting
-    # in a smaller image than the pred_obj_coords
-    # That's why we calculate the floating point range and then take ints individually
-    step_y = tf.cast(original_shape[0] / target_shape[0], tf.float32)
-    step_x = tf.cast(original_shape[1] / target_shape[1], tf.float32)
-    start_y = tf.cast(step_y / 2, tf.float32)
-    start_x = tf.cast(step_x / 2, tf.float32)
-
-    indices_y = tf.range(start_y, original_shape[0], step_y)
-    indices_y_shape = tf.shape(indices_y)
-    indices_x = tf.range(start_x, original_shape[1], step_x)
-    indices_y = tf.reshape(indices_y, [-1, 1])
-    indices_y = tf.tile(indices_y, [1, tf.shape(indices_x)[0]])
-    indices_x = tf.reshape(indices_x, [1, -1])
-    indices_x = tf.tile(indices_x, [tf.shape(indices_y)[0], 1])
-    # Now we have two matrices of equal shape that we can combine to obtain the final index pairs
-    indices = tf.stack([indices_y, indices_x], axis=2)
-    # Now retrieve the actual indices which reduce the rounding error compared to calculating
-    # the step size, e.g. 7.9, and striding this step size along the image
-    indices = tf.cast(tf.round(indices), tf.int32)
-    return indices
-
-def single_loss_graph(pred_obj_coord_image, image_padding, segmentation_image, 
-               target_obj_coord_image, seg_and_coord_padding, color):
-    """ Loss for one batch entry.
-
-    pred_obj_coords: [height, width, 3]. The predicted object coordinates.
-    image_padding: [(bottom, right)]. The widths of the paddings of the original image.
-    segmentation_image: height, width, 3]. The segmentation image.
-    target_obj_coords: [height, width, 3]. The ground-truth object coordinates.
-    seg_and_coord_padding: [(bottom, right)]. The widths of the paddings of the object
-                            coord image and segmentation image. It differs from the paddings of
-                            the original input image because both are not reszied.
-    color: [r, g, b]. The object's color in the segmentation image.
-    """
-
-    # The mask that takes care of downsampling, i.e. that only every i-th pixel is computed
-    # in case that the output image is smaller than the input image
-
-    input_shape = tf.shape(target_obj_coord_image)
-    batch_size = input_shape[0]
-    # The shape of the image that the network output
-    output_shape = tf.shape(pred_obj_coord_image)
-    # With the downsampling ratio we know how much smaller the padding is in the output image
-    ratio_y = output_shape[0] / input_shape[0]
-    ratio_x = output_shape[1] / input_shape[1]
-    # We multiply top and bottom by the y ratio
-    image_padding = tf.cast(image_padding, tf.float64)
-    image_padding_y = image_padding[0] * ratio_y
-    image_padding_x = image_padding[1] * ratio_x
-    image_padding_y = tf.cast(image_padding_y, tf.int32)
-    image_padding_x = tf.cast(image_padding_x, tf.int32)
-    # Now we have the actual predicted area for each batch image individually
-    # [:2] because we only need (height, width) without the channels
-    actual_output_shape = output_shape[:2] - (image_padding_y, image_padding_x)
-    acutal_output_shape_with_channels = [actual_output_shape[0], actual_output_shape[1], 3]
-    # Crop the output prediction to the actual area without padding
-    cropped_pred_obj_coord_image = pred_obj_coord_image[:actual_output_shape[0],
-                                                        :actual_output_shape[1],
-                                                        :]
-    # Now we compute the original shape of the ground truth and segmentation
-    actual_input_shape = input_shape[:2] - tf.cast(seg_and_coord_padding, tf.int32)
-    # And also crop the segmentation and prediction to the actual area
-    cropped_segmentation_image = segmentation_image[:actual_input_shape[0],
-                                                    :actual_input_shape[1],
-                                                    :]
-    cropped_target_obj_coord_image = target_obj_coord_image[:actual_input_shape[0],
-                                                            :actual_input_shape[1],
-                                                            :]
-
-    # Here we compute the relevant indices, e.g. if the output image is 1/8th of the original
-    # input image, we use only every 8-th pixel horizontally and vertically. The code takes
-    # care of the output image's size not being a divisor of the input image's.
-    indices = compute_indices_graph(tf.shape(cropped_segmentation_image)[:2], 
-                                             tf.shape(cropped_pred_obj_coord_image)[:2])
-    #indices = tf.Print(indices, [indices], "indices", summarize=(63 * 63))
-
-    # Now create and object coord and segmentation image of the size of the output shape
-    # that contains only the relevent indices
-    final_target_obj_coord_image = tf.gather_nd(cropped_target_obj_coord_image, 
-                                                indices)
-    final_target_obj_coord_image = tf.reshape(final_target_obj_coord_image, 
-                                              acutal_output_shape_with_channels)
-    final_segmentation_image = tf.gather_nd(cropped_segmentation_image, indices)
-    final_segmentation_image = tf.reshape(final_segmentation_image,
-                                          acutal_output_shape_with_channels)
-
-    segmentation_mask = tf.equal(final_segmentation_image, color)
-    # We have a matrix of bool values of which indices to use after this step
-    segmentation_mask = tf.reduce_all(segmentation_mask, axis=2)
-    segmentation_mask = tf.cast(segmentation_mask, tf.bool)
-
-    # L1 loss: sum of squared element-wise differences
-    squared_diff = tf.square(final_target_obj_coord_image - cropped_pred_obj_coord_image)
-    loss = tf.reduce_mean(squared_diff, axis=2)
-    loss = tf.sqrt(loss)
-    loss = tf.boolean_mask(loss, segmentation_mask)
-    return tf.reduce_mean(loss)
-
-def loss_graph(pred_obj_coord_images, image_paddings, segmentation_images, 
-               target_obj_coord_images, seg_and_coord_paddings, color):
-    """ Loss for the network.
-
-    pred_obj_coords: [batch, height, width, 3]. The predicted object coordinates.
-    image_padding: [batch, (bottom, right)]. The widths of the paddings of the original image.
-    segmentation_image: [batch, height, width, 3]. The segmentation image.
-    target_obj_coords: [batch, height, width, 3]. The ground-truth object coordinates.
-    seg_and_coord_padding: [batch, (bottom, right)]. The widths of the paddings of the object
-                            coord image and segmentation image. It differs from the paddings of
-                            the original input image because both are not reszied.
-    color: [r, g, b]. The object's color in the segmentation image.
-    """
-    elements = (pred_obj_coord_images, image_paddings, segmentation_images,
-                target_obj_coord_images, seg_and_coord_paddings, color)
-    # This computes the loss for each batch entry
-    loss = tf.map_fn(lambda x: single_loss_graph(*x), elements, name="loss_elem_mapping", dtype=tf.float32)
-    return tf.reduce_mean(loss)
 
 def data_generator(dataset, config, shuffle=True, batch_size=1):
     """A generator that returns the images to detect, as well as their segmentation
@@ -476,6 +157,135 @@ class FlowerPowerCNN:
         self.set_log_dir()
         self.keras_model = self.build(mode=mode, config=config)
 
+    def construct_detection_graph(self, input_image):
+        print("Implement this function.")
+        pass
+
+    def compute_indices_graph(self, original_shape, target_shape):
+        """ Computes the indices.
+
+        input_shapes:  [batch, (height, width)]. The un-padded shapes of the input images.
+        outupt_shapes: [batch, (height, width)]. The un-padded shapes of the output images.
+        """
+
+        # If we use an int step size, the offset error distributes when slicing resulting
+        # in a smaller image than the pred_obj_coords
+        # That's why we calculate the floating point range and then take ints individually
+        step_y = tf.cast(original_shape[0] / target_shape[0], tf.float32)
+        step_x = tf.cast(original_shape[1] / target_shape[1], tf.float32)
+        start_y = tf.cast(step_y / 2, tf.float32)
+        start_x = tf.cast(step_x / 2, tf.float32)
+
+        indices_y = tf.range(start_y, original_shape[0], step_y)
+        indices_y_shape = tf.shape(indices_y)
+        indices_x = tf.range(start_x, original_shape[1], step_x)
+        indices_y = tf.reshape(indices_y, [-1, 1])
+        indices_y = tf.tile(indices_y, [1, tf.shape(indices_x)[0]])
+        indices_x = tf.reshape(indices_x, [1, -1])
+        indices_x = tf.tile(indices_x, [tf.shape(indices_y)[0], 1])
+        # Now we have two matrices of equal shape that we can combine to obtain the final index pairs
+        indices = tf.stack([indices_y, indices_x], axis=2)
+        # Now retrieve the actual indices which reduce the rounding error compared to calculating
+        # the step size, e.g. 7.9, and striding this step size along the image
+        indices = tf.cast(tf.round(indices), tf.int32)
+        return indices
+
+    def single_loss_graph(self, pred_obj_coord_image, image_padding, segmentation_image, 
+                target_obj_coord_image, seg_and_coord_padding, color):
+        """ Loss for one batch entry.
+
+        pred_obj_coords: [height, width, 3]. The predicted object coordinates.
+        image_padding: [(bottom, right)]. The widths of the paddings of the original image.
+        segmentation_image: height, width, 3]. The segmentation image.
+        target_obj_coords: [height, width, 3]. The ground-truth object coordinates.
+        seg_and_coord_padding: [(bottom, right)]. The widths of the paddings of the object
+                                coord image and segmentation image. It differs from the paddings of
+                                the original input image because both are not reszied.
+        color: [r, g, b]. The object's color in the segmentation image.
+        """
+
+        # The mask that takes care of downsampling, i.e. that only every i-th pixel is computed
+        # in case that the output image is smaller than the input image
+
+        input_shape = tf.shape(target_obj_coord_image)
+        batch_size = input_shape[0]
+        # The shape of the image that the network output
+        output_shape = tf.shape(pred_obj_coord_image)
+        # With the downsampling ratio we know how much smaller the padding is in the output image
+        ratio_y = output_shape[0] / input_shape[0]
+        ratio_x = output_shape[1] / input_shape[1]
+        # We multiply top and bottom by the y ratio
+        image_padding = tf.cast(image_padding, tf.float64)
+        image_padding_y = image_padding[0] * ratio_y
+        image_padding_x = image_padding[1] * ratio_x
+        image_padding_y = tf.cast(image_padding_y, tf.int32)
+        image_padding_x = tf.cast(image_padding_x, tf.int32)
+        # Now we have the actual predicted area for each batch image individually
+        # [:2] because we only need (height, width) without the channels
+        actual_output_shape = output_shape[:2] - (image_padding_y, image_padding_x)
+        acutal_output_shape_with_channels = [actual_output_shape[0], actual_output_shape[1], 3]
+        # Crop the output prediction to the actual area without padding
+        cropped_pred_obj_coord_image = pred_obj_coord_image[:actual_output_shape[0],
+                                                            :actual_output_shape[1],
+                                                            :]
+        # Now we compute the original shape of the ground truth and segmentation
+        actual_input_shape = input_shape[:2] - tf.cast(seg_and_coord_padding, tf.int32)
+        # And also crop the segmentation and prediction to the actual area
+        cropped_segmentation_image = segmentation_image[:actual_input_shape[0],
+                                                        :actual_input_shape[1],
+                                                        :]
+        cropped_target_obj_coord_image = target_obj_coord_image[:actual_input_shape[0],
+                                                                :actual_input_shape[1],
+                                                                :]
+
+        # Here we compute the relevant indices, e.g. if the output image is 1/8th of the original
+        # input image, we use only every 8-th pixel horizontally and vertically. The code takes
+        # care of the output image's size not being a divisor of the input image's.
+        indices = self.compute_indices_graph(tf.shape(cropped_segmentation_image)[:2], 
+                                                tf.shape(cropped_pred_obj_coord_image)[:2])
+        #indices = tf.Print(indices, [indices], "indices", summarize=(63 * 63))
+
+        # Now create and object coord and segmentation image of the size of the output shape
+        # that contains only the relevent indices
+        final_target_obj_coord_image = tf.gather_nd(cropped_target_obj_coord_image, 
+                                                    indices)
+        final_target_obj_coord_image = tf.reshape(final_target_obj_coord_image, 
+                                                acutal_output_shape_with_channels)
+        final_segmentation_image = tf.gather_nd(cropped_segmentation_image, indices)
+        final_segmentation_image = tf.reshape(final_segmentation_image,
+                                            acutal_output_shape_with_channels)
+
+        segmentation_mask = tf.equal(final_segmentation_image, color)
+        # We have a matrix of bool values of which indices to use after this step
+        segmentation_mask = tf.reduce_all(segmentation_mask, axis=2)
+        segmentation_mask = tf.cast(segmentation_mask, tf.bool)
+
+        # L1 loss: sum of squared element-wise differences
+        squared_diff = tf.square(final_target_obj_coord_image - cropped_pred_obj_coord_image)
+        loss = tf.reduce_mean(squared_diff, axis=2)
+        loss = tf.sqrt(loss)
+        loss = tf.boolean_mask(loss, segmentation_mask)
+        return tf.reduce_mean(loss)
+
+    def loss_graph(self, pred_obj_coord_images, image_paddings, segmentation_images, 
+                target_obj_coord_images, seg_and_coord_paddings, color):
+        """ Loss for the network.
+
+        pred_obj_coords: [batch, height, width, 3]. The predicted object coordinates.
+        image_padding: [batch, (bottom, right)]. The widths of the paddings of the original image.
+        segmentation_image: [batch, height, width, 3]. The segmentation image.
+        target_obj_coords: [batch, height, width, 3]. The ground-truth object coordinates.
+        seg_and_coord_padding: [batch, (bottom, right)]. The widths of the paddings of the object
+                                coord image and segmentation image. It differs from the paddings of
+                                the original input image because both are not reszied.
+        color: [r, g, b]. The object's color in the segmentation image.
+        """
+        elements = (pred_obj_coord_images, image_paddings, segmentation_images,
+                    target_obj_coord_images, seg_and_coord_paddings, color)
+        # This computes the loss for each batch entry
+        loss = tf.map_fn(lambda x: self.single_loss_graph(*x), elements, name="loss_elem_mapping", dtype=tf.float32)
+        return tf.reduce_mean(loss)
+
     def build(self, mode, config):
         """Build Flower Power architecture.
             mode: Either "training" or "inference". The inputs and
@@ -489,22 +299,7 @@ class FlowerPowerCNN:
                                             name="input_segmentation_image", 
                                             dtype=tf.float32)
 
-        # Build the shared convolutional layers.
-        # Bottom-up Layers
-        # Returns a list of the last layers of each stage, 5 in total.
-        batch_norm_trainable = True
-        if mode == "training":
-            batch_norm_trainable = config.BATCH_NORM_TRAINABLE
-
-        C3 = resnet_graph(input_image, 
-                          batch_norm_trainable=batch_norm_trainable)
-
-        # We use the layer C3 here, as with the given strides this results in a receptive field of 51
-        # (see https://fomoro.com/tools/receptive-fields/ for details) which keeps the network towards
-        # a patch-based approach instead of a global one
-        C3 = KL.Conv2D(256, (3, 3), padding="same", name="resnet_p1")(C3)
-
-        obj_coord_image = detection_head_graph(C3, 1024)
+        obj_coord_image = self.construct_detection_graph(input_image)
 
         if mode == "training":
 
@@ -525,7 +320,7 @@ class FlowerPowerCNN:
                                       dtype=tf.int32)
 
             # Losses
-            loss = KL.Lambda(lambda x: loss_graph(*x), name="coord_loss")(
+            loss = KL.Lambda(lambda x: self.loss_graph(*x), name="coord_loss")(
                 [obj_coord_image, input_image_paddings, input_segmentation_image, 
                 input_gt_obj_coord_image, input_seg_and_coord_paddings, color])
 
@@ -810,6 +605,8 @@ class FlowerPowerCNN:
         _prepared_segmentation_images = []
 
         for index in range(len(images)):
+            # TODO: crop images
+
             # We need to store the scaling and padding as well, to retrieve the
             # actual coordinates after inference
             image, image_scale, image_padding = model_util.resize_and_pad_image(

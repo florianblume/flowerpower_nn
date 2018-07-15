@@ -3,7 +3,6 @@ import shutil
 import json
 import cv2
 import math
-import importlib
 import numpy as np
 from random import randint
 
@@ -13,6 +12,7 @@ from model import dataset
 # We load the model later dynamically based on what is requested in the config
 #from model import model
 from model import inference_config
+from model import model_util
 
 def inference(base_path, config):
 
@@ -92,7 +92,7 @@ def inference(base_path, config):
 
     print("Running network inference.")
     # Here we import the request model
-    model = importlib.import_module("model." + config.MODEL + ".model")
+    model = model_util.get_model(config.MODEL)
     network_model = model.FlowerPowerCNN('inference', config, output_path)
     network_model.load_weights(weights_path, by_name=True)
 

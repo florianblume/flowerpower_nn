@@ -1,5 +1,6 @@
 import scipy.misc
 import numpy as np
+import importlib
 
 def create_index_array_from_step_sizes(step_y, end_y, max_y, step_x, end_x, max_x):
 
@@ -94,3 +95,6 @@ def pad_image(image, shape):
     padding = [(top_pad, bottom_pad), (left_pad, right_pad), (0, 0)]
     image = np.pad(image, padding, mode='constant', constant_values=0)
     return image, [padding[0][1], padding[1][1]]
+
+def get_model(model_name):
+    return importlib.import_module("model." + model_name)

@@ -21,7 +21,7 @@ def compute_reprojection(prediction, rvec, tvec, cam_info):
                                         None)
     return reprojection
 
-def ransac(prediction, imsize, cam_info):
+def ransac(prediction, imsize, K):
     obj_coords = prediction['obj_coords']
 
     step_y = prediction['step_y']
@@ -30,7 +30,7 @@ def ransac(prediction, imsize, cam_info):
     image_points, object_points = util.pair_object_coords_with_index(obj_coords, imsize, step_y, step_x)
     retval, rvec, tvec, inliers  = cv2.solvePnPRansac(object_points, 
                               image_points, 
-                              np.array(cam_info['K']).reshape(3, 3), 
+                              K, 
                               None,
                               iterationsCount=100
     )
@@ -41,8 +41,13 @@ def ransac(prediction, imsize, cam_info):
 
     return retval, rvec, tvec
 
-def inference(base_path, config):
+def inference_with_config_path(config_string):
+    config = inference_config.InferenceConfig()
+    config.parse_config_from_json_file(config_string)
+    inference(config)
 
+def inference(config):
+    base_path = os.path.dirname(arguments.config)
     cam_info_path = config.CAM_INFO_PATH
     object_model_path = config.OBJECT_MODEL_PATH
     merge_mode = config.MERGE_MODE
@@ -55,6 +60,7 @@ def inference(base_path, config):
 
     results = inference_script.inference(base_path, config)
 
+    print("test")
     if merge_mode == "append" or merge_mode == "replace":
         with open(output_file, "r") as json_file:
             try:
@@ -72,23 +78,27 @@ def inference(base_path, config):
             key = result["image"]
             prediction = result["prediction"]
             image = cv2.imread(os.path.join(config.IMAGES_PATH, key))
-            pose = ransac(prediction, image.shape, cam_info[key])
+            bb = result["bb"]
+            camera_matrix = np.array(cam_info[key]['K']).reshape(3, 3)
+            # Adjust c_x of the camera matrix, i.e. principal point x
+            camera_matrix[0][2] = camera_matrix[0][2] - bb[1]
+            # Adjust c_y of the camera matrix, i.e. principal point y
+            camera_matrix[1][2] = camera_matrix[1][2] - bb[0]
+            pose = ransac(prediction, image.shape, camera_matrix)
             rotation_matrix = cv2.Rodrigues(pose[1])[0]
             translation_vector = pose[2]
+            result_dict = {"R" : rotation_matrix.flatten().tolist(), 
+                                    "t" : translation_vector.flatten().tolist(), 
+                                    "bb" : bb.flatten().tolist(), 
+                                    "obj" : os.path.basename(object_model_path)}
             if merge_mode == "append" and key in converted_results:
                 # Only when the user wants to append the pose and there already are some
                 # poses for the image
-                converted_results[key].append({"R" : rotation_matrix.flatten().tolist(), 
-                                    "t" : translation_vector.flatten().tolist(), 
-                                    "bb" : result["bb"].flatten().tolist(), 
-                                    "obj" : os.path.basename(object_model_path)})
+                converted_results[key].append(result_dict)
             else:
                 # For overwrite and replace we replace all the content whether
                 # it existed or not
-                converted_results[key] = [{"R" : rotation_matrix.flatten().tolist(), 
-                                    "t" : translation_vector.flatten().tolist(), 
-                                    "bb" : result["bb"].flatten().tolist(), 
-                                    "obj" : os.path.basename(object_model_path)}]
+                converted_results[key] = [result_dict]
 
     print("Writing results to {}".format(output_file))
     with open(output_file, "w") as json_file:
@@ -105,4 +115,4 @@ if __name__ == '__main__':
     arguments = parser.parse_args()
     config = inference_config.InferenceConfig()
     config.parse_config_from_json_file(arguments.config)
-    inference(os.path.dirname(arguments.config), config)
+    inference(config)

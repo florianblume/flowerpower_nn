@@ -3,7 +3,6 @@ import shutil
 import json
 import cv2
 import numpy as np
-import importlib
 from random import shuffle
 
 import util.util as util
@@ -13,6 +12,7 @@ import tifffile as tiff
 import matplotlib.pyplot as plt
 
 from model import dataset
+from model import model_util
 # Model will be imported based on the one requested in the config
 #from model import model
 from model import training_config
@@ -108,7 +108,7 @@ def train(base_path, config):
                         format(train_dataset.size(), val_dataset.size()))
 
     # Here we import the request model
-    model = importlib.import_module("model." + config.MODEL + ".model")
+    model = model_util.get_model(config.MODEL)
     network_model = model.FlowerPowerCNN('training', config, output_path)
     if weights_path != "":
         network_model.load_weights(weights_path, 
