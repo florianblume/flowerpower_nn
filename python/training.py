@@ -49,6 +49,9 @@ def train(base_path, config):
     obj_coordinate_renderings = util.get_files_at_path_of_extensions(obj_coords_path, ['tiff'])
     util.sort_list_by_num_in_string_entries(obj_coordinate_renderings)
 
+    assert len(images) == len(segmentation_renderings) == len(obj_coordinate_renderings), "Number of files in input " \
+                                                                                          "folders does not match."
+
     print("Populating datasets.")
 
     train_dataset = dataset.Dataset()
@@ -56,14 +59,9 @@ def train(base_path, config):
 
     # Open the json files that hold the filenames for the respective datasets
     with open(os.path.join(base_path, config.TRAIN_FILE), 'r') as train_file, \
-         open(os.path.join(base_path, config.VAL_FILE), 'r') as val_file, \
-         open(os.path.join(base_path, config.PREDICTION_EXAMPLES_FILE), 'r') as prediction_examples_file:
+         open(os.path.join(base_path, config.VAL_FILE), 'r') as val_file:
         train_filenames = json.load(train_file)
         val_filenames = json.load(val_file)
-
-        # The filenames that the network is supposed to run inference on after each epoch
-        prediction_example_filenames = json.load(prediction_examples_file)
-        prediction_examples = []
 
         # Fill training dict
         for i, image in enumerate(images):
@@ -100,10 +98,6 @@ def train(base_path, config):
                         segmentation_path,
                         obj_coord_path)
 
-            if image in prediction_example_filenames:
-                prediction_examples.append({"image" : image_path,
-                                            "segmentation" : segmentation_path})
-
     print("Added {} images for training and {} images for validation.". \
                         format(train_dataset.size(), val_dataset.size()))
 
@@ -115,7 +109,7 @@ def train(base_path, config):
             by_name=True, exclude=config.LAYERS_TO_EXCLUDE_FROM_WEIGHT_LOADING)
 
     print("Starting training.")
-    network_model.train(train_dataset, val_dataset, prediction_examples, config)
+    network_model.train(train_dataset, val_dataset, config)
 
 if __name__ == '__main__':
     import argparse

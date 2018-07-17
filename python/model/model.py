@@ -24,34 +24,6 @@ assert LooseVersion(tf.__version__) >= LooseVersion("1.3")
 assert LooseVersion(keras.__version__) >= LooseVersion('2.0.8')
 
 ############################################################
-#  Custom callback to visualize predictions after each epoch
-############################################################
-
-class VisualizePredictionCallback(keras.callbacks.Callback):
-
-    output_path = ""
-
-    dataset = None
-
-    model = None
-
-    shape = None
-
-    images = None
-
-    def __init__(self, model, output_path, dataset, prediction_examples, shape):
-        self.output_path = output_path
-        self.dataset = dataset
-        self.model = model
-        self.shape = shape
-        self.prediction_examples = prediction_examples
-
-    def on_epoch_end(self, epoch, logs={}):
-        # Live example predictions is not working with the new model anymore - but
-        # as model works correctly not really necessary
-        pass
-
-############################################################
 #  Utility Functions
 ############################################################
 
@@ -451,7 +423,7 @@ class FlowerPowerCNN:
         self.checkpoint_path = self.checkpoint_path.replace(
             "*epoch*", "{epoch:04d}")
 
-    def train(self, train_dataset, val_dataset, prediction_examples, config, verbose=0):
+    def train(self, train_dataset, val_dataset, config, verbose=0):
         
         learning_rates = config.LEARNING_RATE
         epochs = config.EPOCHS
@@ -483,11 +455,7 @@ class FlowerPowerCNN:
                                         write_graph=True, 
                                         write_images=config.WRITE_IMAGES),
             keras.callbacks.ModelCheckpoint(self.checkpoint_path,
-                                            verbose=0, save_weights_only=True),
-            VisualizePredictionCallback(self, self.log_dir, 
-                                              train_dataset, 
-                                              prediction_examples, 
-                                              config.IMAGE_SHAPE)
+                                            verbose=0, save_weights_only=True)
         ]
 
         # Common parameters to pass to fit_generator()
@@ -537,7 +505,7 @@ class FlowerPowerCNN:
 
             if verbose > 0:
                 timeline = timeline.Timeline(step_stats=run_metadata.step_stats)
-                chrome_trace = tl.generate_chrome_trace_format()
+                chrome_trace = tf.generate_chrome_trace_format()
                 with open(os.path.join(config.OUTPUT_PATH, 'timeline.json'), 'w') as f:
                     f.write(chrome_trace)
 
