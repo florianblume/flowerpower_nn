@@ -71,7 +71,7 @@ def generate_data(images_path, image_extension, object_model_path, ground_truth_
                     image = cv2.imread(image_path)
 
                     # Render the object coordinates ground truth and store it as tiff image
-                    renderings = renderer.render(object_model, (image.shape[0], image.shape[1]), 
+                    renderings = renderer.render(object_model, (image.shape[1], image.shape[0]), 
                                                                    K, R, t, 
                                                                    mode=[renderer.RENDERING_MODE_OBJ_COORDS, 
                                                                    renderer.RENDERING_MODE_SEGMENTATION],
@@ -85,7 +85,7 @@ def generate_data(images_path, image_extension, object_model_path, ground_truth_
                                                                   segmentation_rendering, 
                                                                   segmentation_rendering,
                                                                   segmentation_color, return_frame=True)
-                    segmentation_rendering_path = "segmentation_" + image_filename_without_extension + ".png"
+                    segmentation_rendering_path = image_filename_without_extension + "_segmentation.png"
                     segmentation_rendering_path = os.path.join(segmentations_output_path, 
                                                             segmentation_rendering_path)
                     cv2.imwrite(segmentation_rendering_path, cropped_segmentation)
@@ -98,7 +98,7 @@ def generate_data(images_path, image_extension, object_model_path, ground_truth_
                                                                     object_coordinates_rendering, 
                                                                     segmentation_rendering,
                                                                     segmentation_color)
-                    object_coordinates_rendering_path = "obj_coords_" + image_filename_without_extension + ".tiff"
+                    object_coordinates_rendering_path = image_filename_without_extension + "_obj_coords.tiff"
                     object_coordinates_rendering_path = os.path.join(obj_coords_output_path, 
                                                             object_coordinates_rendering_path)
                     tiff.imsave(object_coordinates_rendering_path, object_coordinates)
