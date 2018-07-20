@@ -6,14 +6,7 @@ import struct
 from vispy import app, gloo
 import OpenGL.GL as gl
 
-RENDERING_MODE_RGB = 'rgb'
-RENDERING_MODE_DEPTH = 'depth'
-RENDERING_MODE_OBJ_COORDS = 'obj_coords'
-RENDERING_MODE_SEGMENTATION = 'segmentation'
-RENDERING_MODES = [RENDERING_MODE_RGB, 
-                   RENDERING_MODE_DEPTH, 
-                   RENDERING_MODE_OBJ_COORDS,  
-                   RENDERING_MODE_SEGMENTATION]
+AVAILABLE_RENDERING_MODES = ['rgb', 'depth', 'obj_coords', 'segmentation', 'bounding_boxes']
 
 # WARNING: doesn't work with Qt4 (update() does not call on_draw()??)
 app.use_app('PyGlet') # Set backend
@@ -22,22 +15,23 @@ app.use_app('PyGlet') # Set backend
 # This shader simply renders the segmentation mask for the given object
 #-------------------------------------------------------------------------------
 _segmentation_vertex_code = """
+uniform mat4 u_mv;
 uniform mat4 u_mvp;
 attribute vec3 a_position;
 attribute vec3 a_color;
-varying vec4 v_color;
+varying vec3 v_color;
 void main() {
     gl_Position = u_mvp * vec4(a_position, 1.0);
-    v_color = vec4(a_color, 1.0);
+    v_color = a_color;
 }
 """
 
 # Fragment shader that simply applies the color output by the vertex shader
 #-------------------------------------------------------------------------------
 _segmentation_fragment_code = """
-varying vec4 v_color;
+varying vec3 v_color;
 void main() {
-    gl_FragColor = v_color;
+    gl_FragColor = vec4(v_color, 1.0);
 }
 """
 
@@ -48,6 +42,7 @@ void main() {
 # the color buffer is too small (max number is 255, but coordinates can be e.g. 500)
 #-------------------------------------------------------------------------------
 _obj_coords_vertex_code = """
+uniform mat4 u_mv;
 uniform mat4 u_mvp;
 attribute vec3 a_position;
 attribute vec4 a_color;
@@ -76,6 +71,42 @@ void main() {
     gl_FragColor = vec4(x, y, z, 1.0);
 }
 """
+
+# Color vertex shader
+#-------------------------------------------------------------------------------
+_bounding_box_vertex_code = """
+uniform mat4 u_mv;
+uniform mat4 u_mvp;
+uniform vec3 u_light_eye_pos;
+attribute vec3 a_position;
+attribute vec4 a_color;
+varying vec4 v_color;
+varying vec3 v_eye_pos;
+varying vec3 v_L;
+void main() {
+    gl_Position = u_mvp * vec4(a_position, 1.0);
+    v_color = a_color;
+    v_eye_pos = (u_mv * vec4(a_position, 1.0)).xyz; // Vertex position in eye coordinates
+    v_L = normalize(u_light_eye_pos - v_eye_pos); // Vector to the light
+}
+"""
+
+# Color fragment shader
+#-------------------------------------------------------------------------------
+_bounding_box_fragment_code = """
+uniform float u_light_ambient_w;
+varying vec4 v_color;
+varying vec3 v_eye_pos;
+varying vec3 v_L;
+void main() {
+    // Face normal in eye coordinates
+    vec3 face_normal = normalize(cross(dFdx(v_eye_pos), dFdy(v_eye_pos)));
+    float light_diffuse_w = max(dot(normalize(v_L), normalize(face_normal)), 0.0);
+    float light_w = u_light_ambient_w + light_diffuse_w;
+    if(light_w > 1.0) light_w = 1.0;
+    vec4 color = light_w * v_color;
+    gl_FragColor = vec4(color.xyz, 0.5);
+}"""
 
 # Color vertex shader
 #-------------------------------------------------------------------------------
@@ -209,53 +240,60 @@ def _compute_calib_proj(K, x0, y0, w, h, nc, fc, window_coords='y_down'):
         ]) # This row is also standard glPerspective
     return proj.T
 
+def compute_view_matrix(R, t):
+    # View matrix (transforming also the coordinate system from OpenCV to
+    # OpenGL camera space)
+    mat_view = np.eye(4, dtype=np.float32) # From world space to eye space
+    mat_view[:3, :3], mat_view[:3, 3] = R, t.squeeze()
+    yz_flip = np.eye(4, dtype=np.float32)
+    yz_flip[1, 1], yz_flip[2, 2] = -1, -1
+    mat_view = yz_flip.dot(mat_view) # OpenCV to OpenGL camera system
+    mat_view = mat_view.T # OpenGL expects column-wise matrix format
+    return mat_view
+
 #-------------------------------------------------------------------------------
 class _Canvas(app.Canvas):
-    def __init__(self, vertices, faces, size, K, R, t, clip_near, clip_far,
+    def __init__(self, shape, K, models, clip_near, clip_far,
                  bg_color=(0.0, 0.0, 0.0, 0.0), ambient_weight=0.1,
-                 render_rgb=True, render_depth=True, render_obj_coords=True, render_segmentation=True,
-                 segmentation_color=None):
-        """
-        mode is from ['rgb', 'depth', 'rgb+depth']
-        """
-        app.Canvas.__init__(self, show=False, size=size)
+                 render_rgb=True, render_depth=True, 
+                 render_obj_coords=True, render_segmentation=True,
+                 render_bounding_boxes=True):
+
+        app.Canvas.__init__(self, show=False, size=(shape[1], shape[0]))
 
         #gloo.gl.use_gl('gl2 debug')
 
-        self.size = size
-        self.shape = (self.size[1], self.size[0])
+        self.size = (shape[1], shape[0])
+        self.shape = shape
         self.bg_color = bg_color
         self.ambient_weight = ambient_weight
         self.render_rgb = render_rgb
         self.render_depth = render_depth
         self.render_obj_coords = render_obj_coords
         self.render_segmentation = render_segmentation
+        self.render_bounding_boxes = render_bounding_boxes
+        self.models = models
 
         self.rgb = np.array([])
         self.depth = np.array([])
         self.obj_coords = np.array([])
         self.obj_coords_rep = np.array([])
         self.segmentation = np.array([])
-        self.segmentation_color = segmentation_color
 
         # Model matrix
         self.mat_model = np.eye(4, dtype=np.float32) # From object space to world space
 
-        # View matrix (transforming also the coordinate system from OpenCV to
-        # OpenGL camera space)
-        self.mat_view = np.eye(4, dtype=np.float32) # From world space to eye space
-        self.mat_view[:3, :3], self.mat_view[:3, 3] = R, t.squeeze()
-        yz_flip = np.eye(4, dtype=np.float32)
-        yz_flip[1, 1], yz_flip[2, 2] = -1, -1
-        self.mat_view = yz_flip.dot(self.mat_view) # OpenCV to OpenGL camera system
-        self.mat_view = self.mat_view.T # OpenGL expects column-wise matrix format
-
         # Projection matrix
-        self.mat_proj = _compute_calib_proj(K, 0, 0, size[0], size[1], clip_near, clip_far)
+        self.mat_proj = _compute_calib_proj(K, 0, 0, self.size[0], self.size[1], clip_near, clip_far)
 
-        # Create buffers
-        self.vertex_buffer = gloo.VertexBuffer(vertices)
-        self.index_buffer = gloo.IndexBuffer(faces.flatten().astype(np.uint32))
+        self.vertex_buffers = []
+        self.index_buffers = []
+        self.poses = []
+
+        for model in models:
+            self.vertex_buffers.append(gloo.VertexBuffer(model['vertices']))
+            self.index_buffers.append(gloo.IndexBuffer(model['faces'].flatten().astype(np.uint32)))
+            self.poses.append({'R' : model['R'], 't' : model['t']})
 
         # We manually draw the hidden canvas
         self.update()
@@ -269,111 +307,154 @@ class _Canvas(app.Canvas):
             self.draw_obj_coords()
         if self.render_segmentation:
             self.draw_segmentation()
+        if self.render_bounding_boxes:
+            self.draw_bounding_boxes()
         app.quit() # Immediately exit the application after the first drawing   
+
+    def do_render(self, program, fbo, finish_operation):
+        with fbo:
+            gloo.set_state(depth_test=True)
+            gloo.set_state(cull_face=True)
+            gloo.set_cull_face('back')  # Back-facing polygons will be culled
+            gloo.set_clear_color(self.bg_color)
+            gloo.clear(color=True, depth=True)
+            gloo.set_viewport(0, 0, *self.size)
+
+            for i in range(len(self.vertex_buffers)):
+                self.mat_view = compute_view_matrix(self.poses[i]['R'], self.poses[i]['t'])
+                program['u_mv'] = _compute_model_view(self.mat_model, self.mat_view)
+                # program['u_nm'] = compute_normal_matrix(self.model, self.view)
+                program['u_mvp'] = _compute_model_view_proj(self.mat_model, self.mat_view, self.mat_proj)
+                program.bind(self.vertex_buffers[i])
+                program.draw('triangles', self.index_buffers[i])
+
+            if finish_operation:
+                finish_operation(fbo)
 
     def draw_color(self):
         program = gloo.Program(_color_vertex_code, _color_fragment_code)
-        program.bind(self.vertex_buffer)
         program['u_light_eye_pos'] = [0, 0, 0]
         program['u_light_ambient_w'] = self.ambient_weight
-        program['u_mv'] = _compute_model_view(self.mat_model, self.mat_view)
-        # program['u_nm'] = compute_normal_matrix(self.model, self.view)
-        program['u_mvp'] = _compute_model_view_proj(self.mat_model, self.mat_view, self.mat_proj)
-
         # Texture where we render the scene
         render_tex = gloo.Texture2D(shape=self.shape + (4,))
+        # Frame buffer object
+        fbo = gloo.FrameBuffer(render_tex, gloo.RenderBuffer(self.shape))
+        self.do_render(program, fbo, self.retrieve_color)
 
+    def retrieve_color(self, fbo):
+        self.rgb = gloo.read_pixels((0, 0, self.size[0], self.size[1]))[:, :, :3]
+        self.rgb = np.copy(self.rgb)
+
+    def draw_bounding_boxes(self):
+
+        program = gloo.Program(_bounding_box_vertex_code, _bounding_box_fragment_code)
+
+        program['u_light_eye_pos'] = [0, 0, 0]
+        program['u_light_ambient_w'] = self.ambient_weight
+
+        # Texture where we render the scene
+        render_tex = gloo.Texture2D(shape=self.shape + (4,), format=gl.GL_RGBA,
+                                    internalformat=gl.GL_RGBA)
         # Frame buffer object
         fbo = gloo.FrameBuffer(render_tex, gloo.RenderBuffer(self.shape))
         with fbo:
             gloo.set_state(depth_test=True)
             gloo.set_state(cull_face=True)
+            gloo.set_state(blend=True)
+            gloo.set_state(blend_func=('src_alpha', 'one_minus_src_alpha'))
             gloo.set_cull_face('back')  # Back-facing polygons will be culled
             gloo.set_clear_color(self.bg_color)
             gloo.clear(color=True, depth=True)
             gloo.set_viewport(0, 0, *self.size)
-            program.draw('triangles', self.index_buffer)
 
-            # Retrieve the contents of the FBO texture
-            self.rgb = gloo.read_pixels((0, 0, self.size[0], self.size[1]))[:, :, :3]
-            self.rgb = np.copy(self.rgb)
+            for i in range(len(self.vertex_buffers)):
+                self.mat_view = compute_view_matrix(self.poses[i]['R'], self.poses[i]['t'])
+                program['u_mv'] = _compute_model_view(self.mat_model, self.mat_view)
+                # program['u_nm'] = compute_normal_matrix(self.model, self.view)
+                program['u_mvp'] = _compute_model_view_proj(self.mat_model, self.mat_view, self.mat_proj)
+                program.bind(self.vertex_buffers[i])
+                program.draw('triangles', self.index_buffers[i])
+
+                model = self.models[i]
+                vertices = model['vertices']
+                x_max = np.amax(vertices['a_position'][:,0]) 
+                x_min = np.amin(vertices['a_position'][:,0])
+                y_max = np.amax(vertices['a_position'][:,1]) 
+                y_min = np.amin(vertices['a_position'][:,1])
+                z_max = np.amax(vertices['a_position'][:,2]) 
+                z_min = np.amin(vertices['a_position'][:,2])
+                line_vertices = [ # First side of the cube
+                                 [x_max, y_min, z_max],
+                                 [x_max, y_min, z_min],
+                                 [x_min, y_min, z_min],
+                                 [x_min, y_min, z_max],
+                                 [x_max, y_min, z_max],
+                                 # Side wall of the cube
+                                 [x_max, y_max, z_max],
+                                 [x_max, y_max, z_min],
+                                 [x_max, y_min, z_min],
+                                 [x_max, y_max, z_min],
+                                 # Next side wall
+                                 [x_max, y_max, z_min],
+                                 [x_min, y_max, z_min],
+                                 [x_min, y_min, z_min],
+                                 [x_min, y_max, z_min],
+                                 # Next side wall
+                                 [x_min, y_max, z_max],
+                                 [x_min, y_min, z_max],
+                                 [x_min, y_max, z_max],
+
+                                 [x_max, y_max, z_max]]
+                program['a_position'] = gloo.VertexBuffer(line_vertices)
+                program['a_color'] = gloo.VertexBuffer(np.tile(vertices['a_color'][0], [len(line_vertices), 1]))
+                program.draw('line_strip')
+
+            self.retrieve_bounding_boxes()
+
+    def retrieve_bounding_boxes(self):
+        self.bounding_boxes = gloo.read_pixels((0, 0, self.size[0], self.size[1]))[:, :, :3]
+        self.bounding_boxes = np.copy(self.bounding_boxes)
 
     def draw_depth(self):
         program = gloo.Program(_depth_vertex_code, _depth_fragment_code)
-        program.bind(self.vertex_buffer)
-        program['u_mv'] = _compute_model_view(self.mat_model, self.mat_view)
-        program['u_mvp'] = _compute_model_view_proj(self.mat_model, self.mat_view, self.mat_proj)
-
         # Texture where we render the scene
         render_tex = gloo.Texture2D(shape=self.shape + (4,), format=gl.GL_RGBA,
                                     internalformat=gl.GL_RGBA32F)
-
         # Frame buffer object
         fbo = gloo.FrameBuffer(render_tex, gloo.RenderBuffer(self.shape, format='depth'))
-        with fbo:
-            gloo.set_state(depth_test=True)
-            gloo.set_state(cull_face=True)
-            gloo.set_cull_face('back')  # Back-facing polygons will be culled
-            gloo.set_clear_color((0.0, 0.0, 0.0, 0.0))
-            gloo.clear(color=True, depth=True)
-            gloo.set_viewport(0, 0, *self.size)
-            program.draw('triangles', self.index_buffer)
+        self.do_render(program, fbo, self.retrieve_depth)
 
-            # Retrieve the contents of the FBO texture
-            self.depth = self.read_fbo_color_rgba32f(fbo)
-            self.depth = self.depth[:, :, 0] # Depth is saved in the first channel
+    def retrieve_depth(self, fbo):
+        # Retrieve the contents of the FBO texture
+        self.depth = self.read_fbo_color_rgba32f(fbo)
+        self.depth = self.depth[:, :, 0] # Depth is saved in the first channel
 
     def draw_obj_coords(self):
-        """ This function directly draws the (unprecise) representation of the object coordinates.
-        Unprecise, because the color buffer only provides 8 bits but the position is stored in a
-        32 bit float.
-        """
         program = gloo.Program(_obj_coords_vertex_code, _obj_coords_fragment_code)
-        program.bind(self.vertex_buffer)
-        program['u_mvp'] = _compute_model_view_proj(self.mat_model, self.mat_view, self.mat_proj)
-
         # Texture where we render the scene
         render_tex = gloo.Texture2D(shape=self.shape + (4,), format=gl.GL_RGBA,
                                     internalformat=gl.GL_RGBA32F)
-
         # Frame buffer object
         fbo = gloo.FrameBuffer(render_tex, gloo.RenderBuffer(self.shape))
-        with fbo:
-            gloo.set_state(depth_test=True)
-            gloo.set_state(cull_face=True)
-            gloo.set_cull_face('back')  # Back-facing polygons will be culled
-            gloo.set_clear_color(self.bg_color)
-            gloo.clear(color=True, depth=True)
-            gloo.set_viewport(0, 0, *self.size)
-            program.draw('triangles', self.index_buffer)
+        self.do_render(program, fbo, self.retrieve_obj_coords)
 
-            # Retrieve the contents of the FBO texture
-            self.obj_coords = self.read_fbo_color_rgba32f(fbo)[:, :, :3] # Last channel is alpha, we only need the first three
-            self.obj_coords = np.copy(self.obj_coords)
+    def retrieve_obj_coords(self, fbo):
+        # Retrieve the contents of the FBO texture
+        self.obj_coords = self.read_fbo_color_rgba32f(fbo)[:, :, :3] # Last channel is alpha, we only need the first three
+        self.obj_coords = np.copy(self.obj_coords)
 
     def draw_segmentation(self):
         program = gloo.Program(_segmentation_vertex_code, _segmentation_fragment_code)
-        program.bind(self.vertex_buffer)
-        program['u_mvp'] = _compute_model_view_proj(self.mat_model, self.mat_view, self.mat_proj)
-        program['a_color'] = self.segmentation_color
-
         # Texture where we render the scene
         render_tex = gloo.Texture2D(shape=self.shape + (4,))
-
         # Frame buffer object
         fbo = gloo.FrameBuffer(render_tex, gloo.RenderBuffer(self.shape))
-        with fbo:
-            gloo.set_state(depth_test=True)
-            gloo.set_state(cull_face=True)
-            gloo.set_cull_face('back')  # Back-facing polygons will be culled
-            gloo.set_clear_color(self.bg_color)
-            gloo.clear(color=True, depth=True)
-            gloo.set_viewport(0, 0, *self.size)
-            program.draw('triangles', self.index_buffer)
+        self.do_render(program, fbo, self.retrieve_segmentation)
 
-            # Retrieve the contents of the FBO texture
-            self.segmentation = gloo.read_pixels((0, 0, self.size[0], self.size[1]))[:, :, :3]
-            self.segmentation = np.copy(self.segmentation)
+    def retrieve_segmentation(self, fbo):
+        # Retrieve the contents of the FBO texture
+        self.segmentation = gloo.read_pixels((0, 0, self.size[0], self.size[1]))[:, :, :3]
+        self.segmentation = np.copy(self.segmentation)
 
     @staticmethod
     def read_fbo_color_rgba32f(fbo):
@@ -392,57 +473,66 @@ class _Canvas(app.Canvas):
 
 #-------------------------------------------------------------------------------
 # Ref: https://github.com/vispy/vispy/blob/master/examples/demo/gloo/offscreen.py
-def render(model, im_size, K, R, t, clip_near=100, clip_far=2000,
-           surf_color=None, bg_color=(0.0, 0.0, 0.0, 0.0),
-           ambient_weight=0.1, mode=RENDERING_MODES,
-           segmentation_color=None):
+def render(im_shape, K, models, surf_colors=None, 
+            clip_near=100, clip_far=2000, bg_color=(0.0, 0.0, 0.0, 0.0),
+           ambient_weight=0.1, modes=['rgb']):
 
-    # Process input data
-    #---------------------------------------------------------------------------
-    # Make sure vertices and faces are provided in the model
-    assert({'pts', 'faces'}.issubset(set(model.keys())))
+    prepared_models = []
+    for i, model in enumerate(models):
+        # Process input data
+        #---------------------------------------------------------------------------
+        # Make sure vertices and faces are provided in the model
+        assert({'pts', 'faces', 'R', 't'}.issubset(set(model.keys())))
 
-    # Set color of vertices
-    if not surf_color:
-        if 'colors' in model.keys():
-            assert(model['pts'].shape[0] == model['colors'].shape[0])
-            colors = model['colors']
-            if colors.max() > 1.0:
-                colors /= 255.0 # Color values are expected to be in range [0, 1]
+        # Set color of vertices
+        if surf_colors is None:
+            if 'colors' in model.keys():
+                assert(model['pts'].shape[0] == model['colors'].shape[0])
+                colors = model['colors']
+                if colors.max() > 1.0:
+                    colors /= 255.0 # Color values are expected to be in range [0, 1]
+            else:
+                colors = np.ones((model['pts'].shape[0], 4), np.float32) * 0.5
         else:
-            colors = np.ones((model['pts'].shape[0], 4), np.float32) * 0.5
-    else:
-        colors = np.tile(list(surf_color) + [1.0], [model['pts'].shape[0], 1])
-    vertices_type = [('a_position', np.float32, 3),
-                     #('a_normal', np.float32, 3),
-                     ('a_color', np.float32, colors.shape[1])]
-    zipped = zip(model['pts'], colors)
-    vertices = np.array(list(zipped), vertices_type)
+            colors = np.tile(list(surf_colors[i]), [model['pts'].shape[0], 1])
+
+        vertices_type = [('a_position', np.float32, 3),
+                            #('a_normal', np.float32, 3),
+                            ('a_color', np.float32, colors.shape[1])]
+        zipped = zip(model['pts'], colors)
+        vertices = np.array(list(zipped), vertices_type)
+        prepared_models.append({'vertices' : vertices, 
+                                'faces' : model['faces'],
+                                'R' : model['R'],
+                                't' : model['t']})
 
     # Rendering
     #---------------------------------------------------------------------------
-    render_rgb = RENDERING_MODE_RGB in mode
-    render_depth = RENDERING_MODE_DEPTH in mode
-    render_obj_coords = RENDERING_MODE_OBJ_COORDS in mode
-    render_segmentation = RENDERING_MODE_SEGMENTATION in mode
-    c = _Canvas(vertices, model['faces'], im_size, K, R, t, clip_near, clip_far,
-                bg_color, ambient_weight, render_rgb, render_depth, render_obj_coords, render_segmentation,
-                segmentation_color)
+    render_rgb = 'rgb' in modes
+    render_depth = 'depth' in modes
+    render_obj_coords = 'obj_coords' in modes
+    render_segmentation = 'segmentation' in modes
+    render_bounding_boxes = 'bounding_boxes' in modes
+    c = _Canvas(im_shape, K, prepared_models, clip_near, clip_far,
+                bg_color, ambient_weight, 
+                render_rgb, render_depth, render_obj_coords, render_segmentation, render_bounding_boxes)
     app.run()
 
     #---------------------------------------------------------------------------
     out = {}
     if render_rgb:
-        out[RENDERING_MODE_RGB] = c.rgb
+        out['rgb'] = c.rgb
     if render_depth:
-        out[RENDERING_MODE_DEPTH] = c.depth
+        out['depth'] = c.depth
     if render_obj_coords:
-        out[RENDERING_MODE_OBJ_COORDS] = c.obj_coords
+        out['obj_coords'] = c.obj_coords
     if render_segmentation:
-        out[RENDERING_MODE_SEGMENTATION] = c.segmentation
-    if any(elem for elem in mode if elem not in RENDERING_MODES):
+        out['segmentation'] = c.segmentation
+    if render_bounding_boxes:
+        out['bounding_boxes'] = c.bounding_boxes
+    if any(elem for elem in modes if elem not in AVAILABLE_RENDERING_MODES):
         out = None
-        print('Error: Unknown rendering mode in modes: {}'.format(mode))
+        print('Error: Unknown rendering mode in modes: {}'.format(modes))
         exit(-1)
 
     c.close()
