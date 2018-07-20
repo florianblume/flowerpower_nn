@@ -89,6 +89,7 @@ def generate_data(images_path, image_extension, object_models_path, object_model
             misc_surface_colors = np.repeat([[0, 0, 0]], len(misc_obj_models), axis=0)
             surface_colors = np.concatenate([main_surface_color, misc_surface_colors])
             # Render the object coordinates ground truth and store it as tiff image
+<<<<<<< HEAD:python/util/generate_segmentations.py
             rendering = renderer.render((image.shape[0], image.shape[1]), 
                                          K,
                                          [desired_obj_model] + misc_obj_models, 
@@ -96,6 +97,15 @@ def generate_data(images_path, image_extension, object_models_path, object_model
                                          modes=['segmentation'])
 
             cv2.imwrite(segmentation_rendering_path, rendering['segmentation'])
+=======
+            # Renderer expects inverted size
+            segmentation = renderer.render(desired_obj_model, 
+                                         misc_obj_models, 
+                                         (image.shape[1], image.shape[0]), 
+                                         K,
+                                         segmentation_color=segmentation_color)
+            cv2.imwrite(segmentation_rendering_path, segmentation)
+>>>>>>> 67f453c4711a49616a33d2ce0da7b78103a879b3:python/generate_segmentations.py
 
 if __name__ == '__main__':
     import argparse
