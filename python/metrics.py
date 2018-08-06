@@ -87,8 +87,7 @@ def calculate_metrics(gt_images_path, pred_images_path, gt_path, obj,
 
             # We can still calculate the error of the pose even if we do not have
             # the ground truth object coordiantes
-            original_image_file = pred_image_file.split("obj_coords_")[1]
-            original_image_file = original_image_file.split(".tiff")[0]
+            original_image_file = pred_image_file.split("_obj_coords")[0]
             original_image_file = original_image_file + "." + image_extension
             if original_image_file in gt_data:
                 gt_entry_for_image = gt_data[original_image_file]

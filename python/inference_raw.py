@@ -32,7 +32,7 @@ def inference(base_path, config):
         final_image = np.zeros(prediction.shape, dtype=np.float16)
         indices = np.where(shrunk_segmentation_image == config.SEGMENTATION_COLOR)
         final_image[indices] = prediction[indices]
-        tiff.imsave(os.path.join(output_path, "obj_coords_{}.tiff".format(image_filename_without_extension)),
+        tiff.imsave(os.path.join(output_path, "{}_obj_coords.tiff".format(image_filename_without_extension)),
                     final_image)
 
 if __name__ == '__main__':

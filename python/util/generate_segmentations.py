@@ -7,9 +7,9 @@ import importlib
 from random import shuffle
 from collections import OrderedDict
 
-import util.util as util
-import util.tless_inout as inout
-import renderer.renderer_segmentations_with_misc_objs as renderer
+import util
+import tless_inout as inout
+from renderer import renderer
 import tifffile as tiff
 import matplotlib.pyplot as plt
 
@@ -18,30 +18,23 @@ def generate_data(images_path, image_extension, object_models_path, object_model
 
     print("Generating training data.")
 
-    if os.path.exists(output_path):
-        shutil.rmtree(output_path)
+    segmentations_output_path = os.path.join(output_path, 'segmentations')
+
+    if os.path.exists(segmentations_output_path):
+        shutil.rmtree(segmentations_output_path)
         
-    os.makedirs(os.path.join(output_path, "images"))
-    os.makedirs(os.path.join(output_path, "segmentations"))
+    os.makedirs(segmentations_output_path)
 
     # To process only images that actually exist
     existing_images = util.get_files_at_path_of_extensions(images_path, [image_extension])
 
     plt.ioff() # Turn interactive plotting off
 
-    cam_info_output_path = os.path.join(output_path, "info.json")
-
     with open(ground_truth_path, 'r') as gt_data_file, \
-         open(cam_info_path, 'r') as cam_info_file, \
-         open(cam_info_output_path, 'w') as cam_info_output_file:
-
-        # The paths where to store the results
-        images_output_path = os.path.join(output_path, "images")
-        segmentations_output_path = os.path.join(output_path, "segmentations")
+         open(cam_info_path, 'r') as cam_info_file:
+        cam_info = json.load(cam_info_file)
 
         gt_data = OrderedDict(sorted(json.load(gt_data_file).items(), key=lambda t: t[0]))
-        cam_info = json.load(cam_info_file)
-        new_cam_info = {}
         for image_filename in gt_data:
             if not image_filename in existing_images:
               continue
@@ -70,16 +63,17 @@ def generate_data(images_path, image_extension, object_models_path, object_model
                 R = np.array(gt['R']).reshape(3, 3)
                 t = np.array(gt['t'])
                 object_model = inout.load_ply(os.path.join(object_models_path, gt['obj']))
-                obj_dict = {"obj" : object_model, "R" : R, "t" : t}
+                object_model['R'] = R
+                object_model['t'] = t
                 if object_model_name == gt['obj'] and desired_obj_model is None:
                   # We found the first entry for our object model, i.e. this is the one
                   # we want to render a segmentation mask for
-                  desired_obj_model = obj_dict
+                  desired_obj_model = object_model
                 else:
-                  misc_obj_models.append(obj_dict)
+                  misc_obj_models.append(object_model)
 
 
-            segmentation_rendering_path = "segmentation_" + image_filename_without_extension + ".png"
+            segmentation_rendering_path = image_filename_without_extension + "_segmentation.png"
             segmentation_rendering_path = os.path.join(segmentations_output_path, 
                                                     segmentation_rendering_path)
 
@@ -91,36 +85,27 @@ def generate_data(images_path, image_extension, object_models_path, object_model
               cv2.imwrite(segmentation_rendering_path, np.zeros(image.shape, np.uint8))
               continue
 
+            main_surface_color = [[255, 255, 255]]
+            misc_surface_colors = np.repeat([[0, 0, 0]], len(misc_obj_models), axis=0)
+            surface_colors = np.concatenate([main_surface_color, misc_surface_colors])
             # Render the object coordinates ground truth and store it as tiff image
+<<<<<<< HEAD:python/util/generate_segmentations.py
+            rendering = renderer.render((image.shape[0], image.shape[1]), 
+                                         K,
+                                         [desired_obj_model] + misc_obj_models, 
+                                         surface_colors,
+                                         modes=['segmentation'])
+
+            cv2.imwrite(segmentation_rendering_path, rendering['segmentation'])
+=======
+            # Renderer expects inverted size
             segmentation = renderer.render(desired_obj_model, 
                                          misc_obj_models, 
-                                         (image.shape[0], image.shape[1]), 
+                                         (image.shape[1], image.shape[0]), 
                                          K,
                                          segmentation_color=segmentation_color)
-
-            # We need to write the crops into the new camera info file because the principal points 
-            # changes when we crop the image
-            cropped_segmentation, crop_frame = util.crop_image_on_segmentation_color(
-                                                          segmentation, 
-                                                          segmentation,
-                                                          segmentation_color, return_frame=True)
-            cv2.imwrite(segmentation_rendering_path, cropped_segmentation)
-
-            # Save the original image in a cropped version as well
-            cropped_image = util.crop_image_on_segmentation_color(image, 
-                                                                 segmentation,
-                                                                 segmentation_color)
-            cropped_image_path = os.path.join(images_output_path, image_filename)
-            cv2.imwrite(cropped_image_path, cropped_image)
-
-            # Update camera matrix
-            # I.e. the principal point has to be adjusted by shifting it by the crop offset
-            K[0][2] = K[0][2] - crop_frame[1]
-            K[1][2] = K[1][2] - crop_frame[0]
-            image_cam_info['K'] = K.flatten().tolist()
-            new_cam_info[image_filename] = image_cam_info
-
-        json.dump(OrderedDict(sorted(new_cam_info.items(), key=lambda t: t[0])), cam_info_output_file)
+            cv2.imwrite(segmentation_rendering_path, segmentation)
+>>>>>>> 67f453c4711a49616a33d2ce0da7b78103a879b3:python/generate_segmentations.py
 
 if __name__ == '__main__':
     import argparse
