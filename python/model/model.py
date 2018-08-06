@@ -233,9 +233,13 @@ class FlowerPowerCNN:
         segmentation_mask = tf.cast(segmentation_mask, tf.bool)
 
         # L1 loss: sum of squared element-wise differences
-        squared_diff = tf.square(final_target_obj_coord_image - cropped_pred_obj_coord_image)
-        loss = tf.reduce_mean(squared_diff, axis=2)
+        diff = final_target_obj_coord_image - cropped_pred_obj_coord_image
+        squared_diff = tf.square(diff)
+        loss = tf.reduce_sum(squared_diff, axis=2)
         loss = tf.sqrt(loss)
+        # This is the actual L1 loss, the computation above is the euclidean distance
+        # We commented it out, because it's unnecessary, sqrt implies positive values already
+        #loss = tf.abs(loss)
         loss = tf.boolean_mask(loss, segmentation_mask)
         return tf.reduce_mean(loss)
 
