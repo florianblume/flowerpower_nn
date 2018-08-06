@@ -6,10 +6,6 @@ import numpy as np
 from random import shuffle
 
 import util.util as util
-import util.tless_inout as inout
-import renderer.renderer as renderer
-import tifffile as tiff
-import matplotlib.pyplot as plt
 
 from model import dataset
 from model import model_util
