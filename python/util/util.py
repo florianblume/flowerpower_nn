@@ -100,7 +100,7 @@ def get_files_at_path_of_extensions(path, extensions):
     return [fn for fn in os.listdir(path) if any(fn.endswith(ext) for ext in extensions)]
 
 def sort_list_by_num_in_string_entries(list_of_strings):
-    list_of_strings.sort(key=lambda var:[int(x) if x.isdigit() else x for x in re.findall(r'[^0-9]|[0-9]+', var)])
+    list_of_strings.sort()
 
 def is_number(n, _type):
     try:

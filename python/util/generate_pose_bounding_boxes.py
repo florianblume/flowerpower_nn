@@ -37,9 +37,8 @@ def generate_data(images_path, image_extension, object_models_path, object_model
 
         gt_data = OrderedDict(sorted(json.load(gt_data_file).items(), key=lambda t: t[0]))
         inferred_data = OrderedDict(sorted(json.load(inferred_data_file).items(), key=lambda t: t[0]))
-
         for image_filename in gt_data:
-            if not image_filename in inferred_data:
+            if image_filename not in inferred_data or image_filename not in existing_images:
               continue
 
             print("Processing file {}".format(image_filename))

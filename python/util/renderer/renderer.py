@@ -105,7 +105,7 @@ void main() {
     float light_w = u_light_ambient_w + light_diffuse_w;
     if(light_w > 1.0) light_w = 1.0;
     vec4 color = light_w * v_color;
-    gl_FragColor = vec4(color.xyz, 0.5);
+    gl_FragColor = vec4(color.xyz, 1.0);
 }"""
 
 # Color vertex shader
@@ -372,8 +372,8 @@ class _Canvas(app.Canvas):
                 program['u_mv'] = _compute_model_view(self.mat_model, self.mat_view)
                 # program['u_nm'] = compute_normal_matrix(self.model, self.view)
                 program['u_mvp'] = _compute_model_view_proj(self.mat_model, self.mat_view, self.mat_proj)
-                program.bind(self.vertex_buffers[i])
-                program.draw('triangles', self.index_buffers[i])
+                #program.bind(self.vertex_buffers[i])
+                #program.draw('triangles', self.index_buffers[i])
 
                 model = self.models[i]
                 vertices = model['vertices']
@@ -407,6 +407,8 @@ class _Canvas(app.Canvas):
                                  [x_max, y_max, z_max]]
                 program['a_position'] = gloo.VertexBuffer(line_vertices)
                 program['a_color'] = gloo.VertexBuffer(np.tile(vertices['a_color'][0], [len(line_vertices), 1]))
+                gl.glLineWidth(6)
+                gl.glHint(gl.GL_LINE_SMOOTH_HINT, gl.GL_NICEST)
                 program.draw('line_strip')
 
             self.retrieve_bounding_boxes()
@@ -474,7 +476,7 @@ class _Canvas(app.Canvas):
 #-------------------------------------------------------------------------------
 # Ref: https://github.com/vispy/vispy/blob/master/examples/demo/gloo/offscreen.py
 def render(im_shape, K, models, surf_colors=None, 
-            clip_near=100, clip_far=2000, bg_color=(0.0, 0.0, 0.0, 0.0),
+            clip_near=10, clip_far=2000, bg_color=(0.0, 0.0, 0.0, 0.0),
            ambient_weight=0.1, modes=['rgb']):
 
     prepared_models = []

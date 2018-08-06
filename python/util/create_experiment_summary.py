@@ -1,6 +1,6 @@
 import os
 import json
-from util import util
+import util
 from collections import OrderedDict
 
 def gather_summary(exp_path, output_path):

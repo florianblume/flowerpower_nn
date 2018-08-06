@@ -26,7 +26,7 @@ if __name__ == '__main__':
     import argparse
 
     # Parse command line arguments
-    parser = argparse.ArgumentParser(description='This script provides functionality to visualize errors.')
+    parser = argparse.ArgumentParser(description='This script provides functionality to reduce the size of a training set.')
     parser.add_argument("--train",
                         required=True,
                         help="The path to the training set json file.")

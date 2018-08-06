@@ -35,11 +35,16 @@ def ransac(prediction, imsize, K):
                               iterationsCount=100
     )
 
-    # If z value is negative we need to flip the translation vector
+    # If z value is negative we need to flip the translation vector, this can happen when the z axis
+    # is the viewing axis of the camera
     if tvec[2] < 0:
         tvec = tvec * -1
 
-    return retval, rvec, tvec
+    projected_points, _ = cv2.projectPoints(object_points, rvec, tvec, K, None)
+    projected_points = projected_points.reshape(-1, 2)
+    error = np.sum(np.abs(image_points - projected_points) ** 2)
+
+    return retval, rvec, tvec, inliers, np.sqrt(error / float(len(image_points)))
 
 def inference_with_config_path(config_string):
     config = inference_config.InferenceConfig()
@@ -60,8 +65,7 @@ def inference(config):
 
     results = inference_script.inference(base_path, config)
 
-    print("test")
-    if merge_mode == "append" or merge_mode == "replace":
+    if (merge_mode == "append" or merge_mode == "replace") and os.path.exists(output_file):
         with open(output_file, "r") as json_file:
             try:
                 converted_results = json.load(json_file)
@@ -84,13 +88,15 @@ def inference(config):
             camera_matrix[0][2] = camera_matrix[0][2] - bb[1]
             # Adjust c_y of the camera matrix, i.e. principal point y
             camera_matrix[1][2] = camera_matrix[1][2] - bb[0]
-            pose = ransac(prediction, image.shape, camera_matrix)
-            rotation_matrix = cv2.Rodrigues(pose[1])[0]
-            translation_vector = pose[2]
+            _, rvec, tvec, inliers, reprojection_error = ransac(prediction, image.shape, camera_matrix)
+            rotation_matrix = cv2.Rodrigues(rvec)[0]
+            translation_vector = tvec
             result_dict = {"R" : rotation_matrix.flatten().tolist(), 
                                     "t" : translation_vector.flatten().tolist(), 
                                     "bb" : bb.flatten().tolist(), 
-                                    "obj" : os.path.basename(object_model_path)}
+                                    "obj" : os.path.basename(object_model_path),
+                                    "ransac_inliers" : len(inliers.squeeze()),
+                                    "reprojection_error" : reprojection_error}
             if merge_mode == "append" and key in converted_results:
                 # Only when the user wants to append the pose and there already are some
                 # poses for the image
@@ -102,7 +108,7 @@ def inference(config):
 
     print("Writing results to {}".format(output_file))
     with open(output_file, "w") as json_file:
-        json.dump(converted_results, json_file)
+        json.dump(OrderedDict(sorted(converted_results.items())), json_file)
 
 if __name__ == '__main__':
     import argparse
