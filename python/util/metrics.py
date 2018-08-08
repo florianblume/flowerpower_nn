@@ -11,25 +11,23 @@ import util
 import tless_inout as inout
 import tifffile as tiff
 
-def get_summary(mean_errors, coordinate_inliers, angle_errors, distance_errors, pose_errors, pose_inlier_rates):
+def get_summary(mean_errors, coordinate_inliers, angle_errors, distance_errors, pose_errors):
     mean_errors.sort()
     coordinate_inliers.sort(reverse=True)
     angle_errors.sort()
     distance_errors.sort()
     pose_errors.sort()
-    pose_inlier_rates.sort(reverse=True)
+
     mean = {'pixel_error' : np.mean(mean_errors).astype(np.float64),
             'coordinate_inliers' : np.mean(coordinate_inliers),
             'angle_error' : np.mean(angle_errors).astype(np.float64),
             'distance_error' : np.mean(distance_errors),
-            'pose_error' : np.mean(pose_errors),
-            'pose_inlier_rate' : np.mean(pose_inlier_rates)}
+            'pose_error' : np.mean(pose_errors)}
     len_mean_errors = len(mean_errors)
     len_coordinate_inliers = len(coordinate_inliers)
     len_angle_errors = len(angle_errors)
     len_distance_errors = len(distance_errors)
     len_pose_errors = len(pose_errors)
-    len_pose_inlier_rates = len(pose_inlier_rates)
 
     median = {'25' : {}, '50' : {}, '75' : {}}
 
@@ -59,11 +57,6 @@ def get_summary(mean_errors, coordinate_inliers, angle_errors, distance_errors, 
         median['50']['pose_error'] = pose_errors[int(len_pose_errors * 0.50)]
         median['75']['pose_error'] = pose_errors[int(len_pose_errors * 0.75)]
 
-    if len_pose_inlier_rates > 0:
-        median['25']['pose_inlier_rate'] = pose_inlier_rates[int(len_pose_inlier_rates * 0.25)]
-        median['50']['pose_inlier_rate'] = pose_inlier_rates[int(len_pose_inlier_rates * 0.50)]
-        median['75']['pose_inlier_rate'] = pose_inlier_rates[int(len_pose_inlier_rates * 0.75)]
-
     return mean, median
 
 def calculate_metrics(gt_images_path, pred_images_path, gt_path, obj_path, 
@@ -80,7 +73,6 @@ def calculate_metrics(gt_images_path, pred_images_path, gt_path, obj_path,
     angle_errors = []
     distance_errors = []
     pose_errors = []
-    pose_inlier_rates = []
 
     loaded_obj = inout.load_ply(obj_path)
     mesh_points = loaded_obj['pts']
@@ -111,8 +103,11 @@ def calculate_metrics(gt_images_path, pred_images_path, gt_path, obj_path,
                 gt = tiff.imread(os.path.join(gt_images_path, pred_image_file))
                 pred = tiff.imread(os.path.join(pred_images_path, pred_image_file))
                 shrinked_gt = util.shrink_image_with_step_size(gt, pred.shape)
+                # TODO use only valid locations according to segmentation mask
                 diff = np.absolute(shrinked_gt - pred)
-                summed_diff = np.sum(diff, axis=2)
+                summed_diff = np.linalg.norm(diff, axis=2)
+                # TODO check if this gives the correct values
+                raise ValueException()
                 coordinate_inlier = np.where((summed_diff < 2) & (summed_diff > 0))
                 coordinate_inlier_count = int(coordinate_inlier[0].shape[0] / 3.0)
                 mean = np.mean(summed_diff)
@@ -121,7 +116,6 @@ def calculate_metrics(gt_images_path, pred_images_path, gt_path, obj_path,
                 result['pixel_error'] = mean.astype(np.float64)
                 result['coordinate_inliers'] = coordinate_inlier_count
                 image_file_name = pred_image_file.split("_obj_coords.tiff")[0]
-                results['images'][image_file_name] = result
             else:
                 print("Could not find corresponding groundtruth object coordinates for {}.".format(pred_image_file))
 
@@ -146,15 +140,11 @@ def calculate_metrics(gt_images_path, pred_images_path, gt_path, obj_path,
                             # Hinterstoisser et al. pose error
                             pose_error = np.dot(gt_transform, mesh_points) - np.dot(pred_transform, mesh_points)
                             pose_error = np.linalg.norm(pose_error, axis=0)
-                            pose_inliers = pose_error[np.where(pose_error <= d * khs)].shape[0] 
-                            pose_inlier_rate = (pose_inliers / loaded_obj['pts'].shape[0]) * 100
-                            pose_inlier_rates.append(pose_inlier_rate)
-                            result['pose_inlier_rate'] = pose_inlier_rate 
                             pose_error = np.mean(pose_error)
                             pose_errors.append(pose_error)
                             result['pose_error'] = pose_error
                             # Euclidean distance error
-                            distance = np.sqrt(np.sum(np.square(gt_t_vec - pred_t_vec)))
+                            distance = np.linalg.norm(gt_t_vec - pred_t_vec)))
                             distance_errors.append(distance)
                             result['distance_error'] = distance
                             # Rotation angle error
@@ -170,7 +160,7 @@ def calculate_metrics(gt_images_path, pred_images_path, gt_path, obj_path,
                 print("Could not find corresponding ground truth entry for {}.".format(pred_image))
 
         mean, median = get_summary(mean_errors, coordinate_inliers, angle_errors, \
-                                distance_errors, pose_errors, pose_inlier_rates)
+                                distance_errors, pose_errors)
         results['mean'] = mean
         results['median'] = median
         results['images'] = OrderedDict(sorted(results['images'].items()))

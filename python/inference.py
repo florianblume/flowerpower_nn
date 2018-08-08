@@ -102,8 +102,6 @@ def inference(base_path, config):
 
     current_batch = 0
     batch_size = min(batch_size, len(images))
-    # TODO: Check if it is necessary for the network to know the batch size...
-    #       It seems that batch size is just a sanity check
     # Set batch size for the network to the current batch size
     network_model.config.BATCH_SIZE = batch_size
 

@@ -39,7 +39,8 @@ if __name__ == '__main__':
     import argparse
 
     # Parse command line arguments
-    parser = argparse.ArgumentParser(description='This script provides functionality to run the FlowerPower network.')
+    parser = argparse.ArgumentParser(description='This script provides functionality to run the FlowerPower network '
+                                                  'and store the actual coordinate predictions.')
     parser.add_argument("--config",
                         required=True,
                         help="The path to the config file.")
