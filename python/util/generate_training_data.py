@@ -143,7 +143,8 @@ if __name__ == '__main__':
     import json
 
     # Parse command line arguments
-    parser = argparse.ArgumentParser(description='This script provides functionality to train the FlowerPower network.')
+    parser = argparse.ArgumentParser(description='This script provides functionality to render all the necessary data '
+                                                 'for the network to be trained.')
     parser.add_argument("--config",
                         required=True,
                         help="The path to the generation config.")

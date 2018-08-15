@@ -6,6 +6,7 @@ import numpy as np
 import math
 from collections import OrderedDict
 import tifffile as tiff
+import time
 
 import inference as inference_script
 import util.util as util
@@ -51,8 +52,7 @@ def inference_with_config_path(config_string):
     config.parse_config_from_json_file(config_string)
     inference(config)
 
-def inference(config):
-    base_path = os.path.dirname(arguments.config)
+def inference(base_path, config):
     cam_info_path = config.CAM_INFO_PATH
     object_model_path = config.OBJECT_MODEL_PATH
     merge_mode = config.MERGE_MODE
@@ -78,6 +78,7 @@ def inference(config):
     with open(cam_info_path, "r") as cam_info_file:
         cam_info = json.load(cam_info_file)
         print("Predicting poses.")
+        start = time.time()
         for result in results:
             key = result["image"]
             prediction = result["prediction"]
@@ -105,6 +106,8 @@ def inference(config):
                 # For overwrite and replace we replace all the content whether
                 # it existed or not
                 converted_results[key] = [result_dict]
+        elapsed = time.time() - start
+        print('Predicting poses took {} ({} per sample) seconds.'.format(elapsed, elapsed / float(len(results))))
 
     print("Writing results to {}".format(output_file))
     with open(output_file, "w") as json_file:
@@ -114,11 +117,12 @@ if __name__ == '__main__':
     import argparse
 
     # Parse command line arguments
-    parser = argparse.ArgumentParser(description='This script provides functionality to run the FlowerPower network.')
+    parser = argparse.ArgumentParser(description='This script provides functionality to run the FlowerPower network '
+                                                  'and compute the poses implied by the coordinate predictions.')
     parser.add_argument("--config",
                         required=True,
                         help="The path to the config file.")
     arguments = parser.parse_args()
     config = inference_config.InferenceConfig()
     config.parse_config_from_json_file(arguments.config)
-    inference(config)
+    inference(os.path.dirname(arguments.config), config)

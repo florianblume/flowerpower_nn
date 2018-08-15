@@ -107,9 +107,7 @@ if __name__ == '__main__':
 
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='This script provides functionality to'
-                                                  ' create segmentation masks using ground'
-                                                  ' truth for images that the network is'
-                                                  ' to be run on in inference mode.')
+                                                  ' render bounding boxes of poses to visualize the result.')
     parser.add_argument("--config",
                         required=True,
                         help="The path to the generation config.")

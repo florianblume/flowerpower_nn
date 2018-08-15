@@ -31,8 +31,7 @@ if __name__ == '__main__':
     import argparse
 
     # Parse command line arguments
-    parser = argparse.ArgumentParser(description='This script converts camera infos of different datasets \
-        to the one used by flower power neural network.')
+    parser = argparse.ArgumentParser(description='This script creates a camera info file with approximate parameters.')
     parser.add_argument("--images_path",
                         required=True,
                         help="The path to the images.")
