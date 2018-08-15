@@ -1,0 +1,34 @@
+{
+    "NAME": "obj_01",
+    "STEPS_PER_EPOCH": 1000,
+    "EPOCHS": [
+        50
+    ],
+    "GPU_COUNT": 1,
+    "IMAGES_PER_GPU": 1,
+    "VALIDATION_STEPS": 50,
+    "LEARNING_RATE": [
+        0.001
+    ],
+    "LEARNING_MOMENTUM": 0.9,
+    "WEIGHT_DECAY": 0.0001,
+    "LAYERS_TO_TRAIN": [
+        "all"
+    ],
+    "HISTOGRAM_FREQ": 0,
+    "IMAGE_EXTENSION": "jpg",
+    "IMAGE_DIM": 500,
+    "BATCH_NORM_TRAINABLE": true,
+    "MODEL": "model1",
+    "TRAIN_FILE": "./train.json",
+    "VAL_FILE": "./val.json",
+    "OBJECT_MODEL_PATH": "./data/assets/tless/models_cad/obj_01.ply",
+    "WEIGHTS_PATH": "",
+    "LAYERS_TO_EXCLUDE_FROM_WEIGHT_LOADING": [],
+    "CAM_INFO_PATH": "./data/assets/tless/train_canon/01/info.json",
+    "GT_PATH": "./data/assets/tless/train_canon/01/gt.json",
+    "DATA_PATH": "./data/assets/tless/train_canon/01/rendered_training_data/",
+    "REGENERATE_DATA": false,
+    "OUTPUT_PATH": ".",
+    "WRITE_IMAGES": true
+}

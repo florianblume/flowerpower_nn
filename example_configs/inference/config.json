@@ -1,0 +1,31 @@
+{
+    "NAME": "obj_01",
+    "GPU_COUNT": 1,
+    "IMAGES_PER_GPU": 1,
+    "VALIDATION_STEPS": 50,
+    "LEARNING_RATE": [
+        0.001
+    ],
+    "LEARNING_MOMENTUM": 0.9,
+    "WEIGHT_DECAY": 0.0001,
+    "LAYERS_TO_TRAIN": [
+        "all"
+    ],
+    "HISTOGRAM_FREQ": 0,
+    "IMAGE_EXTENSION": "jpg",
+    "SEGMENTATION_IMAGE_EXTENSION" : "png",
+    "IMAGE_DIM": 500,
+    "BATCH_NORM_TRAINABLE": true,
+    "MODEL": "model1",
+    "IMAGE_LIST": "./images.json",
+    "OBJECT_MODEL_PATH": "./data/assets/tless/models_cad/obj_01.ply",
+    "WEIGHTS_PATH": "./data/experiments/model1/inference/model1_weights.h5",
+    "LAYERS_TO_EXCLUDE_FROM_WEIGHT_LOADING": [],
+    "CAM_INFO_PATH": "./data/assets/tless/train_canon/01/info.json",
+    "IMAGES_PATH": "./data/assets/tless/train_canon/01/rgb",
+    "SEGMENTATION_IMAGES_PATH": "./data/assets/tless/train_canon/01/rendered_full_segmentations",
+    "REGENERATE_DATA": false,
+    "OUTPUT_PATH": "./predictions",
+    "OUTPUT_FILE": "inferred_poses.json",
+    "WRITE_IMAGES": true
+}
