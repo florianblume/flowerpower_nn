@@ -40,7 +40,7 @@ if __name__ == '__main__':
     import argparse
 
     # Parse command line arguments
-    parser = argparse.ArgumentParser(description='This script converts camera infos of different datasets \
+    parser = argparse.ArgumentParser(description='This script converts ground-truth poses file of the T-Less datasets \
         to the one used by flower power neural network.')
     parser.add_argument("--gt_path",
                         required=True,

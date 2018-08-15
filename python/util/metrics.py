@@ -12,7 +12,11 @@ from . import util
 from . import tless_inout as inout
 import tifffile as tiff
 
+<<<<<<< HEAD
 def get_summary(mean_errors, coordinate_inliers, angle_errors, distance_errors, pose_errors, accepted):
+=======
+def get_summary(mean_errors, coordinate_inliers, angle_errors, distance_errors, pose_errors):
+>>>>>>> c3056213b77ae3f9838bab893d28a20f53ee350d
     mean_errors.sort()
     coordinate_inliers.sort(reverse=True)
     angle_errors.sort()
@@ -74,7 +78,10 @@ def calculate_metrics(gt_images_path, pred_images_path, gt_path, obj_path,
     angle_errors = []
     distance_errors = []
     pose_errors = []
+<<<<<<< HEAD
     accepted = []
+=======
+>>>>>>> c3056213b77ae3f9838bab893d28a20f53ee350d
 
     loaded_obj = inout.load_ply(obj_path)
     mesh_points = loaded_obj['pts']
@@ -110,6 +117,7 @@ def calculate_metrics(gt_images_path, pred_images_path, gt_path, obj_path,
                 gt = tiff.imread(os.path.join(gt_images_path, pred_image_file))
                 pred = tiff.imread(os.path.join(pred_images_path, pred_image_file))
                 shrinked_gt = util.shrink_image_with_step_size(gt, pred.shape)
+                # TODO use only valid locations according to segmentation mask
                 diff = np.absolute(shrinked_gt - pred)
                 summed_diff = np.linalg.norm(diff, axis=2)
                 coordinate_inlier = np.where((summed_diff < 2) & (summed_diff > 0))
@@ -120,7 +128,6 @@ def calculate_metrics(gt_images_path, pred_images_path, gt_path, obj_path,
                 result['pixel_error'] = mean.astype(np.float64)
                 result['coordinate_inliers'] = coordinate_inlier_count
                 image_file_name = pred_image_file.split("_obj_coords.tiff")[0]
-                results['images'][image_file_name] = result
             else:
                 print("Could not find corresponding groundtruth object coordinates for {}.".format(pred_image_file))
 
@@ -151,7 +158,7 @@ def calculate_metrics(gt_images_path, pred_images_path, gt_path, obj_path,
                             result['pose_accepted'] = bool(pose_error <= khs * d)
                             accepted.append(result['pose_accepted'])
                             # Euclidean distance error
-                            distance = np.sqrt(np.sum(np.square(gt_t_vec - pred_t_vec)))
+                            distance = np.linalg.norm(gt_t_vec - pred_t_vec)))
                             distance_errors.append(distance)
                             result['distance_error'] = distance
                             # Rotation angle error
