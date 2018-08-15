@@ -7,14 +7,14 @@ import importlib
 from random import shuffle
 from collections import OrderedDict
 
-import util
-import tless_inout as inout
-from renderer import renderer
+from . import util
+from . import tless_inout as inout
+from .renderer import renderer
 import tifffile as tiff
 import matplotlib.pyplot as plt
 
 def generate_data(images_path, image_extension, object_models_path, object_model_name, ground_truth_path, 
-                  inferred_poses_path, cam_info_path, segmentation_color, output_path):
+                  inferred_poses_path, cam_info_path, output_path):
 
     print("Generating training data.")
 
@@ -124,6 +124,5 @@ if __name__ == '__main__':
                   config["GROUND_TRUTH_PATH"],
                   config["INFERRED_POSES_PATH"],
                   config["CAM_INFO_PATH"],
-                  config["SEGMENTATION_COLOR"],
                   config["OUTPUT_PATH"]
                   )
