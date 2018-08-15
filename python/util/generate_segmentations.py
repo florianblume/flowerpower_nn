@@ -14,7 +14,7 @@ import tifffile as tiff
 import matplotlib.pyplot as plt
 
 def generate_data(images_path, image_extension, object_models_path, object_model_name, ground_truth_path, 
-                  cam_info_path, segmentation_color, output_path):
+                  cam_info_path, segmentation_color, crop_on_segmentation_mask, output_path):
 
     print("Generating training data.")
 
@@ -94,8 +94,10 @@ def generate_data(images_path, image_extension, object_models_path, object_model
                                          [desired_obj_model] + misc_obj_models, 
                                          surface_colors,
                                          modes=['segmentation'])
-
-            cv2.imwrite(segmentation_rendering_path, rendering['segmentation'])
+            rendering = rendering['segmentation']
+            if crop_on_segmentation_mask:
+              rendering = util.crop_image_on_segmentation_color(rendering, rendering, segmentation_color)
+            cv2.imwrite(segmentation_rendering_path, rendering)
 
 if __name__ == '__main__':
     import argparse
@@ -119,5 +121,6 @@ if __name__ == '__main__':
                   config["GROUND_TRUTH_PATH"],
                   config["CAM_INFO_PATH"],
                   config["SEGMENTATION_COLOR"],
+                  config["CROP_TO_SEGMENTATION_MASK"],
                   config["OUTPUT_PATH"]
                   )

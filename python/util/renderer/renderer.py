@@ -407,7 +407,7 @@ class _Canvas(app.Canvas):
                                  [x_max, y_max, z_max]]
                 program['a_position'] = gloo.VertexBuffer(line_vertices)
                 program['a_color'] = gloo.VertexBuffer(np.tile(vertices['a_color'][0], [len(line_vertices), 1]))
-                gl.glLineWidth(6)
+                gl.glLineWidth(10)
                 gl.glHint(gl.GL_LINE_SMOOTH_HINT, gl.GL_NICEST)
                 program.draw('line_strip')
 

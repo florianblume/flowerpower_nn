@@ -84,9 +84,13 @@ def crop_image_on_segmentation_color(image, segmentation_mask, color, return_fra
     """
     indices = np.where(segmentation_mask == color)
     y_indices = indices[0]
+    if y_indices.shape[0] == 0:
+        return np.array([])
     y_start = np.min(y_indices)
     y_end = np.max(y_indices)
     x_indices = indices[1]
+    if x_indices.shape[0] == 0:
+        return np.array([])
     x_start = np.min(x_indices)
     x_end = np.max(x_indices)
     cropped_image = image[y_start : y_end + 1, x_start : x_end + 1]
