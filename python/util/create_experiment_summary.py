@@ -20,12 +20,13 @@ def gather_summary(exp_path, output_path):
                 util.sort_list_by_num_in_string_entries(experiments)
                 for experiment in experiments:
                     output_data[model][object_model][experiment] = OrderedDict()
-                    metrics_path = os.path.join(object_model_path, experiment, "inference_val", "metrics.json")
+                    metrics_path = os.path.join(object_model_path, experiment, "inference_test", "metrics.json")
                     if os.path.exists(metrics_path):
                         with open(metrics_path, "r") as metrics_file:
                             metrics_data = json.load(metrics_file)
                             output_data[model][object_model][experiment]["mean"] = metrics_data["mean"]
                             output_data[model][object_model][experiment]["median"] = metrics_data["median"]
+                            output_data[model][object_model][experiment]["pose_inliers_percentage"] = metrics_data["pose_inliers_percentage"]
                     else:
                         print("No metrics.json found for {}.".format(model + " - " + object_model + " - " + experiment))
         json.dump(output_data, output_file)
